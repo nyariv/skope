@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "module": "ES2020",
+    "noImplicitAny": true,
+    "removeComments": true,
+    "preserveConstEnums": true,
+    "outDir": "dist/",
+    "rootDir": "src",
+    "sourceMap": true,
+    "target": "ES2020",
+    "declaration": true,
+    "moduleResolution": "node",
+    "lib": ["es5", "es6", "dom", "DOM.Iterable"],
+  },
+  "include": [
+    "src/**/*"
+  ]
+}

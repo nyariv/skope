@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="../dist/Scope.js" type="module"></script>
+  <title>Scope.js Test</title>
+  <style>
+    div {cursor: pointer;}
+  </style>
+</head>
+<body x-app>
+  <script type="text/sandboxjs">
+    let c = 1;
+  </script>
+  <div x-for="a in [1, 2]" @click="++c">
+    <div x-for="b in ['a', 'b']">
+      {{a}} : {{b}} : {{c}}
+    </div>
+  </div>
+  <script type="module">
+    import init from "../dist/Scope.js";
+    init();
+  </script>
+</body>
+</html>
