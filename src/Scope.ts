@@ -91,6 +91,10 @@ class ElementScope {
   }
 }
 
+function getRootElement(scopes: ElementScope[]): Element {
+  return scopes[0]?.$el[0];
+}
+
 let watchGets: {obj: any, name: string}[] = []
 let watchListen = false;
 class RootScope extends ElementScope {
@@ -118,12 +122,8 @@ class RootScope extends ElementScope {
   }
 }
 
-export class Component {
-  $watch(expr: string, cb: (val: any, lastVal: any) => void|Promise<void>): {unsubscribe: () => void} {
-    const subs = watch(expr, cb, [this]);
-    return {unsubscribe: () => unsubNested(subs)};
-  }
-}
+export class Component {}
+
 allowedPrototypes.set(RootScope, new Set());
 allowedPrototypes.set(ElementScope, new Set());
 
@@ -176,7 +176,7 @@ export function getScopes(element: Element, newScope?: {[variable: string]: any}
   return [...(element.hasAttribute('x-detached') ? <ElementScope[]>[] : getScopes(element.parentElement)), ...scopes];
 }
 
-export function watch(code: string, cb: (val: any, lastVal: any) => void|Promise<void>, scopes: any[], digestObj?: {
+export function watch(root: Node, code: string, cb: (val: any, lastVal: any) => void|Promise<void>, scopes: any[], digestObj?: {
     digest: () => void, 
     count: number, 
     countStart: Date, 
@@ -191,11 +191,11 @@ export function watch(code: string, cb: (val: any, lastVal: any) => void|Promise
   }).unsubscribe;
   let val: any;
   try {
-    val = run('return ' + code, ...scopes);
+    val = run(root, 'return ' + code, ...scopes);
   } catch {}
   unsub();
   if (digestObj && digestObj.lastVal === val) {
-    return;
+    return [];
   }
   let timer: number;
   const digest = () => {
@@ -210,7 +210,7 @@ export function watch(code: string, cb: (val: any, lastVal: any) => void|Promise
       }
       if (!digestObj.subs.length) return;
       unsubNested(digestObj.subs);
-      const s = watch(code, cb, scopes, digestObj);
+      const s = watch(root, code, cb, scopes, digestObj);
       digestObj.subs.push(...s);
     });
   }
@@ -245,16 +245,19 @@ export function watch(code: string, cb: (val: any, lastVal: any) => void|Promise
   return digestObj.subs;
 }
 
-const sandboxCache: any = {};
-export function run(code: string, ...scopes: any[]) {
-  sandboxCache[code] = sandboxCache[code] || sandbox.compile(code);
+const sandboxCache: WeakMap<Node, {[code: string]: (...scopes: any[]) => any}> = new WeakMap();
+export function run(el: Node, code: string, ...scopes: any[]) {
+  el = el || document;
+  let codes = sandboxCache.get(el) || {};
+  sandboxCache.set(el, codes);
+  codes[code] = codes[code] || sandbox.compile(code);
   const unsub = sandbox.subscribeGet((obj: any, name: string) => {
     if (obj[name] === RootScope.prototype.$watch) {
       watchListen = true;
       watchGets.push({obj, name});
     }
   });
-  const ret = sandboxCache[code](...scopes);
+  const ret = codes[code](...scopes);
   unsub.unsubscribe();
   watchListen = false;
   watchGets.length = 0;
@@ -272,13 +275,13 @@ export interface DirectiveExec {
 }
 
 defineDirective('show', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
-  return watch(exec.js, (val, lastVal) => {
+  return watch(getRootElement(scopes), exec.js, (val, lastVal) => {
     exec.element.classList.toggle('hide', !val);
   }, scopes);
 });
 
 defineDirective('text', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
-  return watch(exec.js, (val, lastVal) => {
+  return watch(getRootElement(scopes), exec.js, (val, lastVal) => {
     wrap(exec.element).text(val);
   }, scopes);
 });
@@ -288,9 +291,9 @@ defineDirective('ref', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
     throw new Error('Invalid ref name: ' + exec.js);
   }
   const name = getScope(exec.element, [], {name: exec.js.trim()});
-  run(`$refs[name] = $el`, ...scopes, name);
+  run(document, `$refs[name] = $el`, ...scopes, name);
   return [() => {
-    run(`delete $refs[name]`, ...scopes, name);
+    run(document, `delete $refs[name]`, ...scopes, name);
   }];
 });
 
@@ -304,21 +307,21 @@ defineDirective('model', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
   let last: any;
   const change = () => {
     last = !isContentEditable ? $el.val() : $el.html();
-    run(exec.js + ' = $$value', ...scopes, getScope(el, exec.subs, {$$value: last}));
+    run(getRootElement(scopes), exec.js + ' = $$value', ...scopes, getScope(el, exec.subs, {$$value: last}));
   }
   el.addEventListener(isInput ? 'input' : 'change', change);
-  const subs = watch(exec.js, (val, lastVal) => {
+  const subs = watch(getRootElement(scopes), exec.js, (val, lastVal) => {
     if (isContentEditable) {
       $el.html(val);
     } else {
       $el.val(val);
     }
   }, scopes);
-  return [() => exec.element.removeEventListener('input', change), subs];
+  return [() => exec.element.removeEventListener(isInput ? 'input' : 'change', change), subs];
 });
 
 defineDirective('html', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
-  return watch(exec.js, (val, lastVal) => {
+  return watch(getRootElement(scopes), exec.js, (val, lastVal) => {
     exec.element.innerHTML = '';
     const nestedSubs: subs = [];
     exec.subs.push(nestedSubs);
@@ -370,14 +373,15 @@ export function unsubNested(subs: sub) {
     subs();
     return;
   }
-  subs.forEach((unsub) => {
+  const s = subs.slice();
+  subs.length = 0;
+  s.forEach((unsub) => {
     if (Array.isArray(unsub)) {
       unsubNested(unsub);
     } else {
       unsub();
     }
   });
-  subs.length = 0;
 }
 
 export type sub = (() => void)|sub[];
@@ -411,7 +415,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
         getStore<subs>(comment, 'htmlSubs', currentSubs);
         const nestedSubs: subs = [];
         currentSubs.push(nestedSubs)
-        currentSubs.push(watch(element.getAttribute('x-if'), (val, lastVal) => {
+        currentSubs.push(watch(getRootElement(scopes), element.getAttribute('x-if'), (val, lastVal) => {
           if (val) {
             if (!ifElem) {
               const template = document.createElement('template');
@@ -466,14 +470,16 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
         getStore<subs>(comment, 'htmlSubs', currentSubs);
         const nestedSubs: subs = [];
         currentSubs.push(nestedSubs);
-        currentSubs.push(watch(exp, (val: any[], lastVal) => {
+        currentSubs.push(watch(getRootElement(scopes), exp, (val: any[], lastVal) => {
           unsubNested(nestedSubs);
           items.forEach((item) => {
             item.remove();
           });
           items.clear();
           const runs: (() => void)[] = [];
-          val.forEach((item, i) => {
+          let i = -1;
+          for (let item of val) {
+            i++;
             const forSubs: subs = [];
             nestedSubs.push(forSubs);
             const scope: any = {$index: i};
@@ -487,7 +493,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
             comment.before(processed.elem);
             items.add(elem);
             runs.push(processed.run);
-          });
+          }
           runs.forEach((run) => run());
         }, scopes));
       });
@@ -501,21 +507,16 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
     if (element.hasAttribute('x-data')) {
       ready(() => {
         scopes = [...scopes, getScope(element, currentSubs)];
-        scopes = [...scopes, getDataScope(element, run('return ' + (element.getAttribute('x-data') || '{}'), ...scopes))];
+        scopes = [...scopes, getDataScope(element, run(getRootElement(scopes), 'return ' + (element.getAttribute('x-data') || '{}'), ...scopes))];
       });
     }
     if (element instanceof HTMLScriptElement) {
-      if (!element.type || element.type === 'text/javacript') {
-        if (element.src) {
-          element.remove(); // @TODO: Enable when SandboxJS supports importing scripts
-        } else {
-          element.type = 'text/sandboxjs';
-        };
-      }
-      if (element.type === 'text/sandboxjs') {
+      if (element.type === 'scopejs') {
         ready(() => {
-          run(element.innerHTML, ...scopes);
+          run(getRootElement(scopes), element.innerHTML, ...scopes);
         });
+      } else {
+        element.remove();
       }
       return;
     } else {
@@ -549,7 +550,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
           ready(() => {
             const nestedSubs: subs = [];
             currentSubs.push(nestedSubs);
-            currentSubs.push(watch(att.nodeValue, (val, lastVal) => {
+            currentSubs.push(watch(getRootElement(scopes), att.nodeValue, (val, lastVal) => {
               if (typeof val === 'object' && ['style', 'class'].includes(at)) {
                 if (at === 'class') {
                   $element.toggleClass(val);
@@ -574,7 +575,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
         } else if (att.nodeName.startsWith('@')) {
           const parts = att.nodeName.slice(1).split('.');
           const ev = (e: EqEvent) => {
-            run(att.nodeValue, ...scopes, getScope(element, currentSubs, {$event: e}))
+            run(getRootElement(scopes), att.nodeValue, ...scopes, getScope(element, currentSubs, {$event: e}))
           };
           ready(() => {
             if (parts[1] === 'once') {
@@ -611,7 +612,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
           getStore<subs>(placeholder, 'htmlSubs', currentSubs);
           pushSubs();
           ready(() => {
-            currentSubs.push(watch(s.slice(2, -2), (val, lastVal) => {
+            currentSubs.push(watch(getRootElement(scopes), s.slice(2, -2), (val, lastVal) => {
               placeholder.textContent = val;
             }, scopes));
           });

@@ -382,7 +382,7 @@ export class ElementCollection extends Array<Element> {
   /**
    * Element.value
    */
-  val(set?: boolean|string|string[]): string|string[]|boolean|this {
+  val(set?: boolean|string|number|string[]): string|number|string[]|boolean|this {
     if (typeof set !== 'undefined') {
       this.forEach((elem: HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement) => {
         if (elem instanceof HTMLInputElement) {
@@ -417,6 +417,9 @@ export class ElementCollection extends Array<Element> {
     if (elem instanceof HTMLInputElement) {
       if (elem.type === "checkbox" || elem.type === "radio") {
         return elem.checked;
+      }
+      if (elem.type == "number") {
+        return +elem.value;
       }
       return elem.value
     } else if (elem instanceof HTMLSelectElement) {

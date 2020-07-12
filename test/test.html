@@ -10,11 +10,13 @@
   </style>
 </head>
 <body x-app>
-  <script type="text/sandboxjs">
+  <script type="scopejs">
     let c = 1;
+    let range = [];
   </script>
-  <div x-for="a in [1, 2]" @click="++c">
-    <div x-for="b in ['a', 'b']">
+  <input type="number" value="1" @input="range = [...Array($el.val()).keys()]">
+  <div x-for="(a, x) in range" @click="++c">
+    <div x-for="(b, y) in range"> 
       {{a}} : {{b}} : {{c}}
     </div>
   </div>
