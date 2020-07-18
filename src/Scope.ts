@@ -176,6 +176,21 @@ export function getScopes(element: Element, newScope?: {[variable: string]: any}
   return [...(element.hasAttribute('x-detached') ? <ElementScope[]>[] : getScopes(element.parentElement)), ...scopes];
 }
 
+const calls: (() => void)[] = [];
+let timer: number;
+function call(cb: () => void) {
+  calls.push(cb);
+  if (timer) return;
+  timer = setTimeout(() => {
+    timer = null;
+    let toCall = [...calls];
+    calls.length = 0;
+    for (let c of toCall) {
+      c();
+    }
+  });
+}
+
 export function watch(root: Node, code: string, cb: (val: any, lastVal: any) => void|Promise<void>, scopes: any[], digestObj?: {
     digest: () => void, 
     count: number, 
@@ -196,10 +211,8 @@ export function watch(root: Node, code: string, cb: (val: any, lastVal: any) => 
     console.error(err);
   }
   unsub();
-  let timer: number;
   const digest = () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
+    call(() => {
       if ((new Date().getTime() - digestObj.countStart.getTime()) > 500) {
         if (digestObj.count++ > 100) {
           throw new Error('Infinite digest detected');
@@ -230,8 +243,8 @@ export function watch(root: Node, code: string, cb: (val: any, lastVal: any) => 
   gets.forEach((g, obj) => {
     g.forEach((name) => {
       digestObj.subs.push(sandbox.subscribeSet(obj, name, () => {
-        digestObj.digest()
-      },).unsubscribe, () => clearTimeout(timer))
+        digestObj.digest();
+      },).unsubscribe);
     });
   });
   if (lastVal !== val) {
