@@ -15,23 +15,20 @@ declare class ElementScope {
     $dispatch(eventType: string, detail?: any, bubbles?: boolean, cancelable?: boolean): void;
 }
 export declare class Component {
-    $watch(expr: string, cb: (val: any, lastVal: any) => void | Promise<void>): {
-        unsubscribe: () => void;
-    };
 }
 export declare function defineComponent(name: string, comp: Component): void;
 export default function init(elems?: wrapType, component?: string): void;
 export declare function getScopes(element: Element, newScope?: {
     [variable: string]: any;
 }, subs?: subs): ElementScope[];
-export declare function watch(code: string, cb: (val: any, lastVal: any) => void | Promise<void>, scopes: any[], digestObj?: {
+export declare function watch(root: Node, code: string, cb: (val: any, lastVal: any) => void | Promise<void>, scopes: any[], digestObj?: {
     digest: () => void;
     count: number;
     countStart: Date;
     lastVal: any;
     subs: subs;
 }): subs;
-export declare function run(code: string, ...scopes: any[]): any;
+export declare function run(el: Node, code: string, ...scopes: any[]): any;
 export interface DirectiveExec {
     element: Element;
     directive: string;

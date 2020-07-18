@@ -38,7 +38,7 @@ export declare class ElementCollection extends Array<Element> {
         [attr: string]: string | number;
     }, set?: string | number): string | this;
     removeAttr(key: string): this;
-    val(set?: boolean | string | string[]): string | string[] | boolean | this;
+    val(set?: boolean | string | number | string[]): string | number | string[] | boolean | this;
     text(set?: string): any;
     scrollTop(set?: number): any;
     scrollLeft(set?: number): any;
