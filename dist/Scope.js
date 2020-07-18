@@ -2426,6 +2426,23 @@ function getScopes(element, newScope) {
   if (datascope) scopes.push(datascope);
   return [...(element.hasAttribute('x-detached') ? [] : getScopes(element.parentElement)), ...scopes];
 }
+var calls = [];
+var timer;
+
+function call(cb) {
+  calls.push(cb);
+  if (timer) return;
+  timer = setTimeout(() => {
+    timer = null;
+    var toCall = [...calls];
+    calls.length = 0;
+
+    for (var c of toCall) {
+      c();
+    }
+  });
+}
+
 function watch(root, code, cb, scopes, digestObj) {
   var gets = new Map();
   var unsub = sandbox.subscribeGet((obj, name) => {
@@ -2442,11 +2459,9 @@ function watch(root, code, cb, scopes, digestObj) {
   }
 
   unsub();
-  var timer;
 
   var digest = () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
+    call(() => {
       if (new Date().getTime() - digestObj.countStart.getTime() > 500) {
         if (digestObj.count++ > 100) {
           throw new Error('Infinite digest detected');
@@ -2483,7 +2498,7 @@ function watch(root, code, cb, scopes, digestObj) {
     g.forEach(name => {
       digestObj.subs.push(sandbox.subscribeSet(obj, name, () => {
         digestObj.digest();
-      }).unsubscribe, () => clearTimeout(timer));
+      }).unsubscribe);
     });
   });
 
