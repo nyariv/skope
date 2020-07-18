@@ -52,9 +52,9 @@ export class ElementCollection extends EC {
     }
     const nestedSubs: subs = [];
     subs.push(nestedSubs); // @TODO: potential memory leak of accumilating empty subs arrays
-    const processed = processHtml(typeof content !== 'string' ? contentElem : content, nestedSubs, defaultDelegateObject, ...getScopes(elem, {}, subs));
+    const processed = processHtml(typeof content !== 'string' ? contentElem : content, nestedSubs, defaultDelegateObject);
     elem.appendChild(processed.elem);
-    processed.run();
+    processed.run(getScopes(elem, {}, subs));
     return this;
   }
   text(set?: string) {
@@ -143,9 +143,9 @@ export default function init(elems?: wrapType, component?: string) {
       const comp = component || elem.getAttribute('x-app');
       const subs: subs = [];
       const scope = getStore<ElementScope>(elem, 'scope', components[comp] || getScope(elem, subs, {}, true))
-      const processed = processHtml(elem, subs, defaultDelegateObject, scope);
+      const processed = processHtml(elem, subs, defaultDelegateObject);
       elem.setAttribute('x-processed', '');
-      runs.push(processed.run);
+      runs.push(() => processed.run([scope]));
     });
   runs.forEach((run) => run());
 }
@@ -192,11 +192,10 @@ export function watch(root: Node, code: string, cb: (val: any, lastVal: any) => 
   let val: any;
   try {
     val = run(root, 'return ' + code, ...scopes);
-  } catch {}
-  unsub();
-  if (digestObj && digestObj.lastVal === val) {
-    return [];
+  } catch (err) {
+    console.error(err);
   }
+  unsub();
   let timer: number;
   const digest = () => {
     clearTimeout(timer);
@@ -208,12 +207,12 @@ export function watch(root: Node, code: string, cb: (val: any, lastVal: any) => 
         digestObj.count = 0;
         digestObj.countStart = new Date();
       }
-      if (!digestObj.subs.length) return;
       unsubNested(digestObj.subs);
       const s = watch(root, code, cb, scopes, digestObj);
       digestObj.subs.push(...s);
     });
   }
+  let lastVal = undefined;
   if (!digestObj) {
     let subs: subs = [];
     digestObj = { 
@@ -224,6 +223,7 @@ export function watch(root: Node, code: string, cb: (val: any, lastVal: any) => 
       subs
     };
   } else {
+    lastVal = digestObj.lastVal
     digestObj.digest = digest;
     digestObj.lastVal = val;
   }
@@ -234,13 +234,15 @@ export function watch(root: Node, code: string, cb: (val: any, lastVal: any) => 
       },).unsubscribe, () => clearTimeout(timer))
     });
   });
-  const res = cb(val, digestObj.lastVal);
-  if (res instanceof Promise) {
-    res.then(() => {
-      digestObj.digest()
-    }, (err) => {
-      console.error(err);
-    });
+  if (lastVal !== val) {
+    const res = cb(val, digestObj.lastVal);
+    if (res instanceof Promise) {
+      res.then(() => {
+        digestObj.digest()
+      }, (err) => {
+        console.error(err);
+      });
+    }
   }
   return digestObj.subs;
 }
@@ -326,9 +328,9 @@ defineDirective('html', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
     const nestedSubs: subs = [];
     exec.subs.push(nestedSubs);
     unsubNested(walkFindSubs(exec.element));
-    const processed = processHtml(val, nestedSubs, defaultDelegateObject, ...scopes);
+    const processed = processHtml(val, nestedSubs, defaultDelegateObject);
     exec.element.appendChild(processed.elem);
-    processed.run();
+    processed.run(scopes);
   }, scopes);
 });
 
@@ -344,22 +346,25 @@ function runDirective(exec: DirectiveExec, ...scopes: ElementScope[]) {
 }
 
 function walkerInstance() {
-  const execSteps: (() => void)[] = [];
+  const execSteps: ((scopes: ElementScope[]) => ElementScope[])[] = [];
   return {
-    ready: (cb: () => void) => execSteps.push(cb),
-    run: () => execSteps.forEach((cb) => cb())
+    ready: (cb: (scopes: ElementScope[]) => ElementScope[]) => execSteps.push(cb),
+    run: (scopes: ElementScope[]) => {
+      let s = scopes;
+      execSteps.forEach((cb) => s = cb(s))
+    }
   }
 }
 
-function processHtml(elem: Node|string, subs: subs, delegate: DelegateObject, ...scopes: ElementScope[]) {
+function processHtml(elem: Node|string, subs: subs, delegate: DelegateObject) {
   let template: HTMLTemplateElement;
   const exec = walkerInstance();
   if (typeof elem === 'string') {
     template = document.createElement('template');
     template.innerHTML = elem;
-    walkTree(template.content, subs, exec.ready, delegate, ...scopes);
+    walkTree(template.content, subs, exec.ready, delegate);
   } else {
-    walkTree(elem, subs, exec.ready, delegate, ...scopes);
+    walkTree(elem, subs, exec.ready, delegate);
   }
   return {
     elem: typeof elem === 'string' ? template.content : elem,
@@ -386,7 +391,7 @@ export function unsubNested(subs: sub) {
 
 export type sub = (() => void)|sub[];
 export type subs = sub[];
-function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => void, delegate: DelegateObject, ...scopes: ElementScope[]) {
+function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementScope[]) => ElementScope[]) => void, delegate: DelegateObject) {
   let pushed = false;
   const currentSubs: subs = getStore(element, 'htmlSubs') || [];
   const pushSubs = () => {
@@ -411,7 +416,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
       element.before(comment);
       element.remove();
       deleteStore(element, 'htmlSubs');
-      ready(() => {
+      ready((scopes) => {
         getStore<subs>(comment, 'htmlSubs', currentSubs);
         const nestedSubs: subs = [];
         currentSubs.push(nestedSubs)
@@ -422,9 +427,9 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
               template.innerHTML = html;
               ifElem = template.content.firstElementChild;
               ifElem.removeAttribute('x-if');
-              const processed = processHtml(ifElem, nestedSubs, delegate, ...scopes, getScope(ifElem, nestedSubs));
+              const processed = processHtml(ifElem, nestedSubs, delegate);
               comment.after(processed.elem);
-              processed.run();
+              processed.run([...scopes, getScope(ifElem, nestedSubs)]);
             }
           } else {
             if (ifElem) {
@@ -434,6 +439,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
             }
           }
         }, scopes));
+        return scopes;
       });
       return;
     }
@@ -464,7 +470,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
         key = doubleMatch[1];
         value = doubleMatch[2];
       }
-      ready(() => {
+      ready((scopes) => {
         const del = wrap(comment.parentElement).delegate();
         currentSubs.push(del.off);
         getStore<subs>(comment, 'htmlSubs', currentSubs);
@@ -489,31 +495,35 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
             template.innerHTML = html;
             const elem = template.content.firstElementChild;
             elem.removeAttribute('x-for');
-            const processed = processHtml(elem, forSubs, del, ...scopes, getScope(elem, forSubs, scope));
+            const processed = processHtml(elem, forSubs, del);
             comment.before(processed.elem);
             items.add(elem);
-            runs.push(processed.run);
+            runs.push(() => processed.run([...scopes, getScope(elem, forSubs, scope)]));
           }
           runs.forEach((run) => run());
         }, scopes));
+        return scopes;
       });
       return;
     }
     if (element.hasAttribute('x-detached')) {
-      ready(() => {
-        scopes = [getScope(element, currentSubs, {}, true)];
+      ready((scopes) => {
+        return [getScope(element, currentSubs, {}, true)];
       });
     }
     if (element.hasAttribute('x-data')) {
-      ready(() => {
-        scopes = [...scopes, getScope(element, currentSubs)];
-        scopes = [...scopes, getDataScope(element, run(getRootElement(scopes), 'return ' + (element.getAttribute('x-data') || '{}'), ...scopes))];
+      ready(scopes => {
+        scopes = scopes.slice();
+        scopes.push(getScope(element, currentSubs));
+        scopes.push(getDataScope(element, run(getRootElement(scopes), 'return ' + (element.getAttribute('x-data') || '{}'), ...scopes)));
+        return scopes;
       });
     }
     if (element instanceof HTMLScriptElement) {
       if (element.type === 'scopejs') {
-        ready(() => {
+        ready((scopes) => {
           run(getRootElement(scopes), element.innerHTML, ...scopes);
+          return scopes;
         });
       } else {
         element.remove();
@@ -547,7 +557,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
       for (let att of element.attributes) {
         if (att.nodeName.startsWith(':')) {
           const at = att.nodeName.slice(1);
-          ready(() => {
+          ready((scopes) => {
             const nestedSubs: subs = [];
             currentSubs.push(nestedSubs);
             currentSubs.push(watch(getRootElement(scopes), att.nodeValue, (val, lastVal) => {
@@ -564,28 +574,30 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
               } else if (at === "srcdoc" && element instanceof HTMLIFrameElement) {
                 element.contentWindow.document.querySelector(':root')?.remove();
                 unsubNested(nestedSubs);
-                const processed = processHtml(val, nestedSubs, delegate, ...scopes, getScope(element, currentSubs));
+                const processed = processHtml(val, nestedSubs, delegate);
                 element.contentWindow.document.appendChild(processed.elem);
-                processed.run();
+                processed.run([...scopes, getScope(element, currentSubs)]);
               } else if (!at.match(regForbiddenAttr)) {
                 $element.attr(at, val);
               }
             }, scopes));
+            return scopes;
           });
         } else if (att.nodeName.startsWith('@')) {
           const parts = att.nodeName.slice(1).split('.');
-          const ev = (e: EqEvent) => {
-            run(getRootElement(scopes), att.nodeValue, ...scopes, getScope(element, currentSubs, {$event: e}))
-          };
-          ready(() => {
+          ready((scopes) => {
+            const ev = (e: EqEvent) => {
+              run(getRootElement(scopes), att.nodeValue, ...scopes, getScope(element, currentSubs, {$event: e}))
+            };
             if (parts[1] === 'once') {
               currentSubs.push(delegate.one(element, parts[0], ev));
             } else {
               currentSubs.push(delegate.on(element, parts[0], ev));
             }
+            return scopes;
           });
         } else if (att.nodeName.startsWith('x-')) {
-          ready(() => {
+          ready((scopes) => {
             currentSubs.push(runDirective({
               element,
               directive: att.nodeName.slice(2),
@@ -593,6 +605,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
               original: element.outerHTML,
               subs: currentSubs
             }, ...scopes, getScope(element, currentSubs)));
+            return scopes;
           });
         }
       }
@@ -600,7 +613,14 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
   }
   for (let el of element.childNodes) {
     if (el instanceof Element) {
-      walkTree(el, pushed ? currentSubs : parentSubs, ready, delegate, ...scopes);
+      const execSteps: ((scopes: ElementScope[]) => ElementScope[])[] = [];
+      const r = (cb: (scopes: ElementScope[]) => ElementScope[]) => execSteps.push(cb);
+      walkTree(el, pushed ? currentSubs : parentSubs, r, delegate);
+      ready((scopes) => {
+        let s = scopes
+        for (let cb of execSteps) s = cb(s);
+        return scopes;
+      });
     } else if (el.nodeType === 3) {
       const strings = walkText(el.textContent);
       const nodes: Text[] = [];
@@ -611,10 +631,11 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: () => void) => vo
           const placeholder = document.createTextNode("");
           getStore<subs>(placeholder, 'htmlSubs', currentSubs);
           pushSubs();
-          ready(() => {
+          ready((scopes) => {
             currentSubs.push(watch(getRootElement(scopes), s.slice(2, -2), (val, lastVal) => {
               placeholder.textContent = val;
             }, scopes));
+            return scopes;
           });
           nodes.push(placeholder);
         } else {
