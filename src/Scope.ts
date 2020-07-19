@@ -80,6 +80,35 @@ export class ElementCollection extends EC {
 allowedPrototypes.set(EC, new Set());
 allowedPrototypes.set(ElementCollection, new Set());
 
+const $watch = (variable: any, callback: (val: any, lastVal: any) => void): {unsubscribe: () => void} => {
+  if (!watchListen) return { unsubscribe: () => undefined };
+  watchListen = false;
+  const subUnsubs: subs = [];
+  let update = false;
+  for (let item of watchGets) {
+    let lastVal: any;
+    let val: any;
+    subUnsubs.push(sandbox.subscribeSet(item.obj, item.name, () => {
+      val = item.obj[item.name];
+      if (val !== lastVal) {
+        if (!update) {
+          call(() => {
+            update = false;
+            if (val !== lastVal) {
+              const temp = lastVal;
+              lastVal = val;
+              callback(val, temp);
+            }
+          });
+        }
+        update = true;
+      }
+    }).unsubscribe);
+  }
+  watchGets.length = 0;
+  return { unsubscribe: () => unsubNested(subUnsubs) };
+}
+
 class ElementScope {
   $el: ElementCollection;
   constructor(element: Element) {
@@ -98,28 +127,11 @@ function getRootElement(scopes: ElementScope[]): Element {
 let watchGets: {obj: any, name: string}[] = []
 let watchListen = false;
 class RootScope extends ElementScope {
-  $refs: {};
-  $wrap(element: wrapType) {
+  $refs = {};
+  $wrap = (element: wrapType) => {
     return wrap(element, this.$el);
   }
-  $watch(variable: any, callback: (val: any, lastVal: any) => void): {unsubscribe: () => void} {
-    if (!watchListen) return { unsubscribe: () => undefined };
-    watchListen = false;
-    for (let item of watchGets) {
-      watchGets.length = 0;
-      if (item.obj[item.name] === variable) {
-        let lastVal: any;
-        return sandbox.subscribeSet(item.obj, item.name, () => {
-          const val = item.obj[item.name];
-          if (val !== lastVal) {
-            callback(val, lastVal);
-            lastVal = val;
-          }
-        });
-      }
-    }
-    return { unsubscribe: () => undefined };
-  }
+  $watch = $watch
 }
 
 export class Component {}
@@ -142,7 +154,8 @@ export default function init(elems?: wrapType, component?: string) {
     .forEach((elem) => {
       const comp = component || elem.getAttribute('x-app');
       const subs: subs = [];
-      const scope = getStore<ElementScope>(elem, 'scope', components[comp] || getScope(elem, subs, {}, true))
+      const scope = getStore<ElementScope>(elem, 'scope', components[comp] || getScope(elem, subs, {}, true));
+      console.log(scope)
       const processed = processHtml(elem, subs, defaultDelegateObject);
       elem.setAttribute('x-processed', '');
       runs.push(() => processed.run([scope]));
@@ -194,7 +207,7 @@ function call(cb: () => void) {
 export function watch(root: Node, code: string, cb: (val: any, lastVal: any) => void|Promise<void>, scopes: any[], digestObj?: {
     digest: () => void, 
     count: number, 
-    countStart: Date, 
+    countStart: number, 
     lastVal: any,
     subs: subs
   }): subs {
@@ -213,12 +226,12 @@ export function watch(root: Node, code: string, cb: (val: any, lastVal: any) => 
   unsub();
   const digest = () => {
     call(() => {
-      if ((new Date().getTime() - digestObj.countStart.getTime()) > 500) {
+      if ((Date.now() - digestObj.countStart) > 500) {
         if (digestObj.count++ > 100) {
           throw new Error('Infinite digest detected');
         }
         digestObj.count = 0;
-        digestObj.countStart = new Date();
+        digestObj.countStart = Date.now();
       }
       unsubNested(digestObj.subs);
       const s = watch(root, code, cb, scopes, digestObj);
@@ -231,7 +244,7 @@ export function watch(root: Node, code: string, cb: (val: any, lastVal: any) => 
     digestObj = { 
       digest, 
       count: 0,
-      countStart: new Date(),
+      countStart: Date.now(),
       lastVal: val,
       subs
     };
@@ -267,14 +280,15 @@ export function run(el: Node, code: string, ...scopes: any[]) {
   sandboxCache.set(el, codes);
   codes[code] = codes[code] || sandbox.compile(code);
   const unsub = sandbox.subscribeGet((obj: any, name: string) => {
-    if (obj[name] === RootScope.prototype.$watch) {
+    if (obj[name] === $watch) {
       watchListen = true;
+    } else if (watchListen) {
       watchGets.push({obj, name});
     }
   });
+  watchListen = false;
   const ret = codes[code](...scopes);
   unsub.unsubscribe();
-  watchListen = false;
   watchGets.length = 0;
   return ret;
 }
