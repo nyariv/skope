@@ -24,7 +24,7 @@ export declare function getScopes(element: Element, newScope?: {
 export declare function watch(root: Node, code: string, cb: (val: any, lastVal: any) => void | Promise<void>, scopes: any[], digestObj?: {
     digest: () => void;
     count: number;
-    countStart: Date;
+    countStart: number;
     lastVal: any;
     subs: subs;
 }): subs;

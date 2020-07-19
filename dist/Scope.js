@@ -2310,6 +2310,48 @@ class ElementCollection$1 extends ElementCollection {
 allowedPrototypes.set(ElementCollection, new Set());
 allowedPrototypes.set(ElementCollection$1, new Set());
 
+var $watch = (variable, callback) => {
+  if (!watchListen) return {
+    unsubscribe: () => undefined
+  };
+  watchListen = false;
+  var subUnsubs = [];
+  var update = false;
+
+  var _loop = function _loop(item) {
+    var lastVal = void 0;
+    var val = void 0;
+    subUnsubs.push(sandbox.subscribeSet(item.obj, item.name, () => {
+      val = item.obj[item.name];
+
+      if (val !== lastVal) {
+        if (!update) {
+          call(() => {
+            update = false;
+
+            if (val !== lastVal) {
+              var temp = lastVal;
+              lastVal = val;
+              callback(val, temp);
+            }
+          });
+        }
+
+        update = true;
+      }
+    }).unsubscribe);
+  };
+
+  for (var item of watchGets) {
+    _loop(item);
+  }
+
+  watchGets.length = 0;
+  return {
+    unsubscribe: () => unsubNested(subUnsubs)
+  };
+};
+
 class ElementScope {
   constructor(element) {
     this.$el = wrap$1(element);
@@ -2333,43 +2375,15 @@ var watchGets = [];
 var watchListen = false;
 
 class RootScope extends ElementScope {
-  $wrap(element) {
-    return wrap$1(element, this.$el);
-  }
+  constructor() {
+    super(...arguments);
+    this.$refs = {};
 
-  $watch(variable, callback) {
-    if (!watchListen) return {
-      unsubscribe: () => undefined
-    };
-    watchListen = false;
-
-    var _loop = function _loop(item) {
-      watchGets.length = 0;
-
-      if (item.obj[item.name] === variable) {
-        var lastVal;
-        return {
-          v: sandbox.subscribeSet(item.obj, item.name, () => {
-            var val = item.obj[item.name];
-
-            if (val !== lastVal) {
-              callback(val, lastVal);
-              lastVal = val;
-            }
-          })
-        };
-      }
+    this.$wrap = element => {
+      return wrap$1(element, this.$el);
     };
 
-    for (var item of watchGets) {
-      var _ret = _loop(item);
-
-      if (typeof _ret === "object") return _ret.v;
-    }
-
-    return {
-      unsubscribe: () => undefined
-    };
+    this.$watch = $watch;
   }
 
 }
@@ -2391,6 +2405,7 @@ function init(elems, component) {
     var comp = component || elem.getAttribute('x-app');
     var subs = [];
     var scope = getStore(elem, 'scope', components[comp] || getScope(elem, subs, {}, true));
+    console.log(scope);
     var processed = processHtml(elem, subs, defaultDelegateObject);
     elem.setAttribute('x-processed', '');
     runs.push(() => processed.run([scope]));
@@ -2462,13 +2477,13 @@ function watch(root, code, cb, scopes, digestObj) {
 
   var digest = () => {
     call(() => {
-      if (new Date().getTime() - digestObj.countStart.getTime() > 500) {
+      if (Date.now() - digestObj.countStart > 500) {
         if (digestObj.count++ > 100) {
           throw new Error('Infinite digest detected');
         }
 
         digestObj.count = 0;
-        digestObj.countStart = new Date();
+        digestObj.countStart = Date.now();
       }
 
       unsubNested(digestObj.subs);
@@ -2484,7 +2499,7 @@ function watch(root, code, cb, scopes, digestObj) {
     digestObj = {
       digest,
       count: 0,
-      countStart: new Date(),
+      countStart: Date.now(),
       lastVal: val,
       subs
     };
@@ -2523,14 +2538,16 @@ function run(el, code) {
   sandboxCache.set(el, codes);
   codes[code] = codes[code] || sandbox.compile(code);
   var unsub = sandbox.subscribeGet((obj, name) => {
-    if (obj[name] === RootScope.prototype.$watch) {
+    if (obj[name] === $watch) {
       watchListen = true;
+    } else if (watchListen) {
       watchGets.push({
         obj,
         name
       });
     }
   });
+  watchListen = false;
 
   for (var _len = arguments.length, scopes = new Array(_len > 2 ? _len - 2 : 0), _key = 2; _key < _len; _key++) {
     scopes[_key - 2] = arguments[_key];
@@ -2538,7 +2555,6 @@ function run(el, code) {
 
   var ret = codes[code](...scopes);
   unsub.unsubscribe();
-  watchListen = false;
   watchGets.length = 0;
   return ret;
 }
@@ -2697,7 +2713,7 @@ function walkTree(element, parentSubs, ready, delegate) {
   };
 
   if (element instanceof Element) {
-    var _ret2 = function () {
+    var _ret = function () {
       if (["OBJECT", "EMBED"].includes(element.tagName)) {
         element.remove();
         return {
@@ -2955,7 +2971,7 @@ function walkTree(element, parentSubs, ready, delegate) {
       }
     }();
 
-    if (typeof _ret2 === "object") return _ret2.v;
+    if (typeof _ret === "object") return _ret.v;
   }
 
   var _loop4 = function _loop4(el) {
