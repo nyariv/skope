@@ -13,7 +13,7 @@ const regForbiddenAttr = /^(on|:|@|x-)/;
 const regHrefJS = /^\s*javascript:/;
 
 export function wrap(selector: wrapType, context?: ElementCollection|EC): ElementCollection {
-  return Object.assign(Object.create(ElementCollection.prototype), elementWrap(selector, context));
+  return Object.assign(elementWrap(selector, context), Object.create(ElementCollection.prototype));
 }
 
 function walkFindSubs(elem: Node, up = false): subs {
@@ -33,7 +33,7 @@ function walkFindSubs(elem: Node, up = false): subs {
 export class ElementCollection extends EC {
   html(content?: wrapType) {
     if (content === undefined) {
-      return this[0]?.innerHTML;
+      return this.get(0)?.innerHTML;
     }
     let contentElem: Node;
     let elem = this.get(0);
@@ -69,10 +69,10 @@ export class ElementCollection extends EC {
   }
   detach() {
     const contentElem = document.createElement('template');
-    this.forEach((elem) => {
+    for (let elem of this) {
       unsubNested(getStore<subs>(elem, 'htmlSubs'));
       contentElem.appendChild(elem);
-    });
+    };
     return contentElem.content;
   }
 }
@@ -97,7 +97,7 @@ class ElementScope {
 }
 
 function getRootElement(scopes: ElementScope[]): Element {
-  return scopes[0]?.$el[0];
+  return scopes[0]?.$el.get(0);
 }
 
 class RootScope extends ElementScope {
@@ -123,7 +123,7 @@ export function defineComponent(name: string, comp: Component) {
 
 export default function init(elems?: wrapType, component?: string) {
   const runs: (() => void)[] = [];
-  (elems ? wrap(elems, $document) : $document.search('[x-app]').not('[x-app] [x-app]'))
+  (elems ? wrap(elems, $document) : $document.find('[x-app]').not('[x-app] [x-app]'))
     .once('x-processed')
     .forEach((elem) => {
       const comp = component || elem.getAttribute('x-app');
@@ -426,7 +426,6 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
       return;
     }
     if (element.hasAttribute('x-for')) {
-      const html = element.outerHTML;
       const comment = document.createComment('x-for');
       element.after(comment);
       element.remove();
@@ -461,7 +460,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
         currentSubs.push(watch(watchRun(scopes, exp), (val) => {
           unsubNested(nestedSubs);
           items.forEach((item) => {
-            item.remove();
+            item.remove(); // @TODO: optimize
           });
           items.clear();
           const runs: (() => void)[] = [];
@@ -473,9 +472,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
             const scope: any = {$index: i};
             if (key) scope[key] = i;
             if (value) scope[value] = item;
-            const template = document.createElement('template');
-            template.innerHTML = html;
-            const elem = template.content.firstElementChild;
+            const elem = element.cloneNode(true) as Element;
             elem.removeAttribute('x-for');
             const processed = processHtml(elem, forSubs, del);
             comment.before(processed.elem);

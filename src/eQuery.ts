@@ -17,7 +17,7 @@
 const elementStorage = new WeakMap<Node, Map<string, any>>();
 
 type sortCallback = (a: Element, b: Element) => any;
-type search = (value: Element, index?: number) => any;
+type search = (value?: Element, index?: number) => any;
 interface EqEventListener<T> {
   (evt: T&EqEvent): void;
 }
@@ -28,6 +28,11 @@ export interface DelegateObject {
   on<T extends Event>(elem: Element, event: string, callback: EqEventListener<T>): () => void;
   one<T extends Event>(elem: Element, event: string, callback: EqEventListener<T>): () => void;
   off(): void;
+}
+
+const arrs: WeakMap<ElementCollection, Element[]> = new WeakMap();
+function arr(coll: ElementCollection): Element[] {
+  return arrs.get(coll) || [];
 }
 
 export const defaultDelegateObject: DelegateObject = {
@@ -47,38 +52,82 @@ export const defaultDelegateObject: DelegateObject = {
 /**
  * elementWrapper collection of Elements with mimicked jQuery api.
  * @class ElementCollection
- * @extends Array
  */
-export class ElementCollection extends Array<Element> {
+export class ElementCollection {
 
   constructor(...items: (Element|number)[]) {
-    super(...items as any);
+    arrs.set(this, new Array(...items) as Element[]);
+  }
+
+  get size() {
+    return arr(this).length;
+  }
+
+  get $elements() {
+    return [...arr(this)];
+  }
+
+  [Symbol.iterator]() {
+    return arr(this)[Symbol.iterator]();
+  }
+
+  forEach(cb: (elem?: Element, i?: number) => void) {
+    arr(this).forEach(cb);
+  }
+
+  map<T>(cb: (elem?: Element, i?: number) => T) {
+    return arr(this).map(cb);
+  }
+
+  filter(selector: wrapType|((elem?: Element, i?: number) => boolean)) {
+    return filter(this, selector);
+  }
+
+  some(cb: (elem: Element, i: number) => boolean) {
+    return arr(this).some(cb);
+  }
+
+  every(cb: (elem: Element, i: number) => boolean) {
+    return arr(this).every(cb);
+  }
+
+  slice(start?: number, end?: number) {
+    return new ElementCollection(...arr(this).slice(start, end));
   }
 
   sort(callback?: sortCallback) {
-    if(!callback) return super.sort((a, b) => {
-      if( a === b) return 0;
-      if( a.compareDocumentPosition(b) & 2) {
-          // b comes before a
-          return 1;
-      }
-      return -1;
-    });
-    return super.sort(callback);
+    if(!callback) {
+      arr(this).sort((a, b) => {
+        if( a === b) return 0;
+        if( a.compareDocumentPosition(b) & 2) {
+            // b comes before a
+            return 1;
+        }
+        return -1;
+      });
+    } else {
+      arr(this).sort(callback);
+    }
+    return this;
+  }
+
+  reverse() {
+    arr(this).reverse();
+    return this;
   }
 
   /**
    * Remove any duplicate elements.
    */
   unique() {
-    return from(this.toSet(), ElementCollection);
+    return from(this.toSet());
   }
 
   /**
    * Convert to Array.
    */
   toArray() {
-    return from(this, Array);
+    return this.$elements;
   }
 
   /**
@@ -88,16 +137,6 @@ export class ElementCollection extends Array<Element> {
     let res = new Set<Element>();
     this.forEach((elem) => res.add(elem));
     return res;
-  }
-
-  /**
-   * Add elements to collection.
-   */
-  add(selector: wrapType, context?: ElementCollection) {
-    if (selector instanceof Array) {
-      selector = selector.filter(Boolean)
-    }
-    return wrap([this, wrap(selector, context)]);
   }
   
   /**
@@ -131,8 +170,8 @@ export class ElementCollection extends Array<Element> {
           return true;
         }
         /**  @type {ElementCollection} */
-        let found = from(elem.querySelectorAll(':scope ' + selector), ElementCollection);
-        found = found.add(parents(found));
+        let found = [...elem.querySelectorAll(':scope ' + selector)];
+        found = found.concat(arr(parents(found)));
         found.forEach(e => cache.add(e));
         return found.length;
       });
@@ -144,11 +183,11 @@ export class ElementCollection extends Array<Element> {
   /**
    * Element.querySeletorAll()/Array.find()
    */
-  search(selector: wrapType|search): ElementCollection {
+  find(selector: wrapType|search): ElementCollection {
     if (typeof selector === 'function') {
-      return new ElementCollection(this.find((a, b, c) => (selector as search)(a, b)));
+      return new ElementCollection(arr(this).find((a, b, c) => (selector as search)(a, b)));
     }
-    return wrap(selector, new ElementCollection(...this));
+    return wrap(selector, this);
   }
 
   /**
@@ -246,7 +285,7 @@ export class ElementCollection extends Array<Element> {
     const all: Set<EqEventListenerAny>[] = [];
     const once = new Set<EqEventListenerAny>();
     const started = new Map<string, () => void>();
-    const that = this[0];
+    const that = arr(this)[0];
     if (!that) return defaultDelegateObject;
     return {
       on<T extends Event>(elem: Element, event: string, callback: EqEventListener<T>) {
@@ -366,7 +405,7 @@ export class ElementCollection extends Array<Element> {
       });
     })) return this;
     
-    return (this[0] && typeof key === 'string') ? this[0].getAttribute(key) : null;
+    return (arr(this)[0] && typeof key === 'string') ? arr(this)[0].getAttribute(key) : null;
   }
 
   /**
@@ -412,7 +451,7 @@ export class ElementCollection extends Array<Element> {
       })
       return this;
     }
-    const elem = this[0];
+    const elem = arr(this)[0];
     if (!elem) return;
     if (elem instanceof HTMLInputElement) {
       if (elem.type === "checkbox" || elem.type === "radio") {
@@ -484,9 +523,9 @@ export class ElementCollection extends Array<Element> {
       });
     })) return this;
 
-    if (!this[0]) return null;
+    if (!arr(this)[0]) return null;
 
-    let data = getStore<any>(this[0], 'data') || {};
+    let data = getStore<any>(arr(this)[0], 'data') || {};
     return typeof key === 'undefined' ? data : (typeof key === 'string' ? data[key] : data);
   }
 
@@ -563,7 +602,7 @@ export class ElementCollection extends Array<Element> {
    */
   get(index: number) {
     index = +index;
-    return this[index < 0 ? this.length + index : index];
+    return arr(this)[index < 0 ? this.size + index : index];
   }
 
   /**
@@ -572,16 +611,16 @@ export class ElementCollection extends Array<Element> {
   index(selector?: wrapType) {
     let ind = 0;
     if (typeof selector === 'undefined') {
-      return this.first().prevAll().length;
+      return this.first().prevAll().size;
     } else if (typeof selector === 'string') {
       this.forEach((elem) => !(elem.matches(selector) || (ind++ || false)));
-      return ind >= this.length ? -1 : ind;
+      return ind >= this.size ? -1 : ind;
     }
 
     const sel = (selector instanceof ElementCollection ? selector : wrap(selector)).toSet();
     this.forEach((elem) => !(sel.has(elem) || (ind++ && false)));
 
-    return ind >= this.length ? -1 : ind;
+    return ind >= this.size ? -1 : ind;
   }
 
   /**
@@ -601,12 +640,11 @@ export class ElementCollection extends Array<Element> {
   /**
    * Get element.
    */
-  eq(index: number) 
-  {
+  eq(index: number) {
     const res = new ElementCollection(1);
     const elem = this.get(index);
-    if (elem) res[0] = elem;
-    else res.pop();
+    if (elem) arr(res)[0] = elem;
+    else arr(res).pop();
     return res;
   }
 
@@ -624,7 +662,7 @@ export class ElementCollection extends Array<Element> {
    * @returns {ElementCollection}
    */
   nextUntil(selector?: string|Element, filter?: string) {
-    return from(propElem(this, 'nextElementSibling', filter, true, false, selector), ElementCollection).sort();
+    return from(propElem(this, 'nextElementSibling', filter, true, false, selector)).sort();
   }
 
   /**
@@ -647,7 +685,7 @@ export class ElementCollection extends Array<Element> {
    * Element.previousElementSibling
    */
   prevUntil(selector?: string|Element, filter?: string) {
-    return from(propElem(this, 'previousElementSibling', filter, true, false, selector, true), ElementCollection).sort().reverse();
+    return from(propElem(this, 'previousElementSibling', filter, true, false, selector, true)).sort().reverse();
   }
 
   /**
@@ -671,7 +709,7 @@ export class ElementCollection extends Array<Element> {
    * Element.children
    */
   children(selector?: string) {
-    return from(propElem(this.map((elem) => elem.firstElementChild), 'nextElementSibling', selector, true, true), ElementCollection);
+    return from(propElem(this.map((elem) => elem.firstElementChild), 'nextElementSibling', selector, true, true));
   }
 
 }
@@ -737,7 +775,7 @@ export interface EqEvent {
   stoppedPropagation: boolean;
 }
 
-export type selector = Element|ElementCollection|NodeList|string|Set<Element>
+export type selector = Element|ElementCollection|NodeList|HTMLCollection|string|Set<Element>
 export type wrapType = selector|selector[];
 /**
  * Query function to get elements
@@ -747,7 +785,10 @@ export type wrapType = selector|selector[];
  */
 export function wrap(selector: wrapType, context?: ElementCollection): ElementCollection {
   if (!selector) return new ElementCollection();
-  if (!context && typeof selector === 'string') return from(document.querySelectorAll(selector), ElementCollection);
+  if (!context && (selector instanceof NodeList || selector instanceof HTMLCollection)) {
+    return from(selector);
+  }
+  if (!context && typeof selector === 'string') return from(document.querySelectorAll(selector));
   if (!context && selector instanceof Element) return new ElementCollection(selector);
   if (!context && selector instanceof ElementCollection) return filter(selector).unique().sort();
   
@@ -756,8 +797,7 @@ export function wrap(selector: wrapType, context?: ElementCollection): ElementCo
   let elems = new Set<Element>();
   let doFilter = !!context;
   let doSort = selectors.length > 1;
-
-  if ((selectors.length === 1 && $context.length === 1 && selectors[0] === $context[0]) || $context === selector) return $context;
+  if ((selectors.length === 1 && $context.size === 1 && selectors[0] === arr($context)[0]) || $context === selector) return $context;
 
   for (let sel of selectors) {
     if (sel instanceof ElementCollection) {
@@ -778,14 +818,14 @@ export function wrap(selector: wrapType, context?: ElementCollection): ElementCo
       }
     } else if (sel instanceof HTMLCollection) {
       if (!context && selectors.length === 1) {
-        return from(sel, ElementCollection);
+        return from(sel);
       }
-      from(sel, ElementCollection).forEach((elem) => {
+      from(sel).forEach((elem) => {
         elems.add(elem);
       });
     } else if (typeof sel === 'string') {
       if (!context && selectors.length === 1) {
-        return from(document.querySelectorAll(sel), ElementCollection);
+        return from(document.querySelectorAll(sel));
       }
       $context.forEach((cElem) => {
         cElem.querySelectorAll(':scope ' + sel).forEach((elem) => elems.add(elem));
@@ -801,7 +841,7 @@ export function wrap(selector: wrapType, context?: ElementCollection): ElementCo
         }
       });
     } else {
-      from(sel, ElementCollection).forEach((elem) => {
+      from(sel).forEach((elem) => {
         if(elem instanceof Element) {
           elems.add(elem);
         }
@@ -809,7 +849,7 @@ export function wrap(selector: wrapType, context?: ElementCollection): ElementCo
     }
   }
 
-  let res = from(elems, ElementCollection);
+  let res = from(elems);
 
   // Filter within context
   if (doFilter) {
@@ -822,7 +862,6 @@ export function wrap(selector: wrapType, context?: ElementCollection): ElementCo
   if (doSort) {
     res = res.sort();
   }
-
   return res;
 }
 
@@ -831,9 +870,9 @@ export function wrap(selector: wrapType, context?: ElementCollection): ElementCo
    * Filter elements that match selector, or Array.filter() if selector is a function.
    */
   function filter(elems: ElementCollection, selector?: wrapType|search): ElementCollection {
-    if (!selector) return new ElementCollection(...elems.filter((elem) => elem instanceof Element));
+    if (!selector) return new ElementCollection(...arr(elems).filter((elem) => elem instanceof Element));
     if (typeof selector === 'function') {
-      return new ElementCollection(...elems.filter(selector));
+      return new ElementCollection(...arr(elems).filter(selector));
     }
     if (typeof selector === 'string') {
       return filter(elems, (elem) => elem.matches(selector));
@@ -856,12 +895,12 @@ function prop(elems: ElementCollection, key: string, set: any) {
     });
   })) return elems;
 
-  return elems[0] ? (<any>elems[0])[key] : null;
+  return arr(elems)[0] ? (<any>arr(elems)[0])[key] : null;
 }
 
 
-function parents(elems: ElementCollection, selector?: string) {
-  return from(propElem(elems, 'parentNode', selector, true), ElementCollection).sort().reverse();
+function parents(elems: ElementCollection|Array<Element>, selector?: string) {
+  return from(propElem(elems, 'parentNode', selector, true)).sort().reverse();
 }
 
 /**
@@ -877,8 +916,14 @@ function propElem(collection: ElementCollection|Array<Element>, prop: string, se
     if (sel instanceof Array) return sel.includes(elem);
     return elem === sel;
   };
-  for (let i = reverse ? collection.length - 1 : 0; reverse ? i >= 0 : i < collection.length; reverse ? i-- : i++) {
-    let elem = collection[i];
+  let coll;
+  if (collection instanceof ElementCollection) {
+    coll = arr(collection);
+  } else {
+    coll = collection
+  }
+  for (let i = reverse ? coll.length - 1 : 0; reverse ? i >= 0 : i < coll.length; reverse ? i-- : i++) {
+    let elem = coll[i];
     if (!elem) continue;
     if (cache.has(elem)) continue;
     cache.add(elem);
@@ -933,26 +978,24 @@ function objectOrProp<T>(name: string|{[k:string]: T}, set: T|undefined|false, e
  * @param {typeof Array|typeof ElementCollection} [Class] defaults to ElementCollection
  * @returns {*}
  */
-function from<T>(object: Array<Element>|Set<Element>|ElementCollection|NodeList|HTMLCollection, Class: new (...items: any) => T): T {
-  if (typeof object !== 'object' || !object) return new Class(); 
-  if (Class.isPrototypeOf(object)) return (<any>object);
-  if (object instanceof Array || object instanceof NodeList || object instanceof HTMLCollection) {
-    let i;
-    let arr = new Class(object.length);
-    for (i = 0; i < object.length; i++) {
-      (<any>arr)[i] = object[i];
-    }
-    return arr;
+function from<T>(object: Array<Element>|Set<Element>|ElementCollection|NodeList|HTMLCollection): ElementCollection {
+  if (typeof object !== 'object' || !object) return new ElementCollection(); 
+  if (object instanceof ElementCollection) return object;
+  let size = 0;
+  if (object instanceof Array) {
+    size = object.length;
+  } else if(object instanceof Set) {
+    size = object.size;
+  } else {
+    return new ElementCollection(...[...object].filter((el) => el instanceof Element) as Element[]);
   }
-  if (object.size) {
-    let i = 0 ;
-    let arr = new Class(object.size);
-    object.forEach((item) => {
-      (<any>arr)[i++] = item;
-    });
-    return arr;
+  const res = new ElementCollection(size);
+  let objArr = arr(res);
+  let i = 0;
+  for (let item of object) {
+    objArr[i++] = item;
   }
-  return (Class as any).from(object);
+  return res;
 }
 
 /**
