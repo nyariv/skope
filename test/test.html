@@ -13,7 +13,7 @@
   <script type="scopejs">
     let c = 1;
     let range = [0];
-    $watch(c, (val) => console.log(val))
+    $watch(() => c, (val) => console.log(val));
   </script>
   <input type="number" value="1" @input="range = Array($el.val()).keys()">
   <div x-for="(a, x) in range" @click="++c">
