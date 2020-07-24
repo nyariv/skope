@@ -21,14 +21,8 @@ export default function init(elems?: wrapType, component?: string): void;
 export declare function getScopes(element: Element, newScope?: {
     [variable: string]: any;
 }, subs?: subs): ElementScope[];
-export declare function watch(root: Node, code: string, cb: (val: any, lastVal: any) => void | Promise<void>, scopes: any[], digestObj?: {
-    digest: () => void;
-    count: number;
-    countStart: number;
-    lastVal: any;
-    subs: subs;
-}): subs;
-export declare function run(el: Node, code: string, ...scopes: any[]): any;
+export declare function watch(toWatch: () => any, handler: (val: any, lastVal: any) => void | Promise<void>): subs;
+export declare function run(el: Node, code: string, scopes: ElementScope[]): any;
 export interface DirectiveExec {
     element: Element;
     directive: string;

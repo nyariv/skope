@@ -440,11 +440,9 @@ function assignCheck(obj, context, op = 'assign') {
     throw new SandboxError(`Override prototype property '${obj.prop}' not allowed`);
   }
 
-  setTimeout(() => {
-    var _a, _b;
+  var _a, _b;
 
-    (_b = (_a = context.setSubscriptions.get(obj.context)) === null || _a === void 0 ? void 0 : _a.get(obj.prop)) === null || _b === void 0 ? void 0 : _b.forEach(cb => cb());
-  });
+  (_b = (_a = context.setSubscriptions.get(obj.context)) === null || _a === void 0 ? void 0 : _a.get(obj.prop)) === null || _b === void 0 ? void 0 : _b.forEach(cb => cb());
 }
 
 let ops2 = {
@@ -1106,7 +1104,14 @@ class Sandbox {
   static get SAFE_GLOBALS() {
     return {
       Function,
-      console,
+      console: {
+        debug: console.debug,
+        error: console.error,
+        info: console.info,
+        log: console.log,
+        table: console.table,
+        warn: console.warn
+      },
       isFinite,
       isNaN,
       parseFloat,
@@ -1385,6 +1390,12 @@ class Sandbox {
 }
 
 var elementStorage = new WeakMap();
+var arrs = new WeakMap();
+
+function arr(coll) {
+  return arrs.get(coll) || [];
+}
+
 var defaultDelegateObject = {
   on(elem, event, callback) {
     var $el = wrap(elem);
@@ -1401,44 +1412,86 @@ var defaultDelegateObject = {
   off() {}
 
 };
-class ElementCollection extends Array {
+class ElementCollection {
   constructor() {
-    super(...arguments);
+    for (var _len = arguments.length, items = new Array(_len), _key = 0; _key < _len; _key++) {
+      items[_key] = arguments[_key];
+    }
+
+    arrs.set(this, new Array(...items));
+  }
+
+  get size() {
+    return arr(this).length;
+  }
+
+  get $elements() {
+    return [...arr(this)];
+  }
+
+  [Symbol.iterator]() {
+    return arr(this)[Symbol.iterator]();
+  }
+
+  forEach(cb) {
+    arr(this).forEach(cb);
+  }
+
+  map(cb) {
+    return arr(this).map(cb);
+  }
+
+  filter(selector) {
+    return filter(this, selector);
+  }
+
+  some(cb) {
+    return arr(this).some(cb);
+  }
+
+  every(cb) {
+    return arr(this).every(cb);
+  }
+
+  slice(start, end) {
+    return new ElementCollection(...arr(this).slice(start, end));
   }
 
   sort(callback) {
-    if (!callback) return super.sort((a, b) => {
-      if (a === b) return 0;
+    if (!callback) {
+      arr(this).sort((a, b) => {
+        if (a === b) return 0;
 
-      if (a.compareDocumentPosition(b) & 2) {
-        return 1;
-      }
+        if (a.compareDocumentPosition(b) & 2) {
+          return 1;
+        }
 
-      return -1;
-    });
-    return super.sort(callback);
+        return -1;
+      });
+    } else {
+      arr(this).sort(callback);
+    }
+
+    return this;
+  }
+
+  reverse() {
+    arr(this).reverse();
+    return this;
   }
 
   unique() {
-    return from(this.toSet(), ElementCollection);
+    return from(this.toSet());
   }
 
   toArray() {
-    return from(this, Array);
+    return this.$elements;
   }
 
   toSet() {
     var res = new Set();
     this.forEach(elem => res.add(elem));
     return res;
-  }
-
-  add(selector, context) {
-    if (selector instanceof Array) {
-      selector = selector.filter(Boolean);
-    }
-
-    return wrap([this, wrap(selector, context)]);
   }
 
   is(selector) {
@@ -1467,8 +1520,8 @@ class ElementCollection extends Array {
           return true;
         }
 
-        var found = from(elem.querySelectorAll(':scope ' + selector), ElementCollection);
-        found = found.add(parents(found));
+        var found = [...elem.querySelectorAll(':scope ' + selector)];
+        found = found.concat(arr(parents(found)));
         found.forEach(e => cache.add(e));
         return found.length;
       });
@@ -1478,12 +1531,12 @@ class ElementCollection extends Array {
     return filter(this, (elem, i) => sel.some(test => elem !== test && elem.contains(test)));
   }
 
-  search(selector) {
+  find(selector) {
     if (typeof selector === 'function') {
-      return new ElementCollection(this.find((a, b, c) => selector(a, b)));
+      return new ElementCollection(arr(this).find((a, b, c) => selector(a, b)));
     }
 
-    return wrap(selector, new ElementCollection(...this));
+    return wrap(selector, this);
   }
 
   on(events, callback, options) {
@@ -1577,7 +1630,7 @@ class ElementCollection extends Array {
     var all = [];
     var once = new Set();
     var started = new Map();
-    var that = this[0];
+    var that = arr(this)[0];
     if (!that) return defaultDelegateObject;
     return {
       on(elem, event, callback) {
@@ -1701,7 +1754,7 @@ class ElementCollection extends Array {
         elem.setAttribute(k, v + "");
       });
     })) return this;
-    return this[0] && typeof key === 'string' ? this[0].getAttribute(key) : null;
+    return arr(this)[0] && typeof key === 'string' ? arr(this)[0].getAttribute(key) : null;
   }
 
   removeAttr(key) {
@@ -1742,7 +1795,7 @@ class ElementCollection extends Array {
       return this;
     }
 
-    var elem = this[0];
+    var elem = arr(this)[0];
     if (!elem) return;
 
     if (elem instanceof HTMLInputElement) {
@@ -1797,8 +1850,8 @@ class ElementCollection extends Array {
         data[k] = v;
       });
     })) return this;
-    if (!this[0]) return null;
-    var data = getStore(this[0], 'data') || {};
+    if (!arr(this)[0]) return null;
+    var data = getStore(arr(this)[0], 'data') || {};
     return typeof key === 'undefined' ? data : typeof key === 'string' ? data[key] : data;
   }
 
@@ -1855,22 +1908,22 @@ class ElementCollection extends Array {
 
   get(index) {
     index = +index;
-    return this[index < 0 ? this.length + index : index];
+    return arr(this)[index < 0 ? this.size + index : index];
   }
 
   index(selector) {
     var ind = 0;
 
     if (typeof selector === 'undefined') {
-      return this.first().prevAll().length;
+      return this.first().prevAll().size;
     } else if (typeof selector === 'string') {
       this.forEach(elem => !(elem.matches(selector) || ind++ || false));
-      return ind >= this.length ? -1 : ind;
+      return ind >= this.size ? -1 : ind;
     }
 
     var sel = (selector instanceof ElementCollection ? selector : wrap(selector)).toSet();
     this.forEach(elem => !(sel.has(elem) || ind++ && false));
-    return ind >= this.length ? -1 : ind;
+    return ind >= this.size ? -1 : ind;
   }
 
   first() {
@@ -1884,7 +1937,7 @@ class ElementCollection extends Array {
   eq(index) {
     var res = new ElementCollection(1);
     var elem = this.get(index);
-    if (elem) res[0] = elem;else res.pop();
+    if (elem) arr(res)[0] = elem;else arr(res).pop();
     return res;
   }
 
@@ -1895,7 +1948,7 @@ class ElementCollection extends Array {
   }
 
   nextUntil(selector, filter) {
-    return from(propElem(this, 'nextElementSibling', filter, true, false, selector), ElementCollection).sort();
+    return from(propElem(this, 'nextElementSibling', filter, true, false, selector)).sort();
   }
 
   nextAll(selector) {
@@ -1909,7 +1962,7 @@ class ElementCollection extends Array {
   }
 
   prevUntil(selector, filter) {
-    return from(propElem(this, 'previousElementSibling', filter, true, false, selector, true), ElementCollection).sort().reverse();
+    return from(propElem(this, 'previousElementSibling', filter, true, false, selector, true)).sort().reverse();
   }
 
   prevAll(selector) {
@@ -1921,7 +1974,7 @@ class ElementCollection extends Array {
   }
 
   children(selector) {
-    return from(propElem(this.map(elem => elem.firstElementChild), 'nextElementSibling', selector, true, true), ElementCollection);
+    return from(propElem(this.map(elem => elem.firstElementChild), 'nextElementSibling', selector, true, true));
   }
 
 }
@@ -1974,8 +2027,8 @@ function wrapEvent(originalEvent) {
         var fn = originalEvent[_prop];
         props[_prop] = {
           get: () => function () {
-            for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
-              args[_key] = arguments[_key];
+            for (var _len2 = arguments.length, args = new Array(_len2), _key2 = 0; _key2 < _len2; _key2++) {
+              args[_key2] = arguments[_key2];
             }
 
             return fn.call(originalEvent, ...args);
@@ -1994,7 +2047,12 @@ function wrapEvent(originalEvent) {
 
 function wrap(selector, context) {
   if (!selector) return new ElementCollection();
-  if (!context && typeof selector === 'string') return from(document.querySelectorAll(selector), ElementCollection);
+
+  if (!context && (selector instanceof NodeList || selector instanceof HTMLCollection)) {
+    return from(selector);
+  }
+
+  if (!context && typeof selector === 'string') return from(document.querySelectorAll(selector));
   if (!context && selector instanceof Element) return new ElementCollection(selector);
   if (!context && selector instanceof ElementCollection) return filter(selector).unique().sort();
   var selectors = selector instanceof Array ? selector : [selector];
@@ -2002,7 +2060,7 @@ function wrap(selector, context) {
   var elems = new Set();
   var doFilter = !!context;
   var doSort = selectors.length > 1;
-  if (selectors.length === 1 && $context.length === 1 && selectors[0] === $context[0] || $context === selector) return $context;
+  if (selectors.length === 1 && $context.size === 1 && selectors[0] === arr($context)[0] || $context === selector) return $context;
 
   var _loop = function _loop(sel) {
     if (sel instanceof ElementCollection) {
@@ -2028,17 +2086,17 @@ function wrap(selector, context) {
     } else if (sel instanceof HTMLCollection) {
       if (!context && selectors.length === 1) {
         return {
-          v: from(sel, ElementCollection)
+          v: from(sel)
         };
       }
 
-      from(sel, ElementCollection).forEach(elem => {
+      from(sel).forEach(elem => {
         elems.add(elem);
       });
     } else if (typeof sel === 'string') {
       if (!context && selectors.length === 1) {
         return {
-          v: from(document.querySelectorAll(sel), ElementCollection)
+          v: from(document.querySelectorAll(sel))
         };
       }
 
@@ -2057,7 +2115,7 @@ function wrap(selector, context) {
         }
       });
     } else {
-      from(sel, ElementCollection).forEach(elem => {
+      from(sel).forEach(elem => {
         if (elem instanceof Element) {
           elems.add(elem);
         }
@@ -2071,7 +2129,7 @@ function wrap(selector, context) {
     if (typeof _ret === "object") return _ret.v;
   }
 
-  var res = from(elems, ElementCollection);
+  var res = from(elems);
 
   if (doFilter) {
     res = filter(res, (elem, i) => {
@@ -2087,10 +2145,10 @@ function wrap(selector, context) {
 }
 
 function filter(elems, selector) {
-  if (!selector) return new ElementCollection(...elems.filter(elem => elem instanceof Element));
+  if (!selector) return new ElementCollection(...arr(elems).filter(elem => elem instanceof Element));
 
   if (typeof selector === 'function') {
-    return new ElementCollection(...elems.filter(selector));
+    return new ElementCollection(...arr(elems).filter(selector));
   }
 
   if (typeof selector === 'string') {
@@ -2107,11 +2165,11 @@ function prop(elems, key, set) {
       elem[k] = v;
     });
   })) return elems;
-  return elems[0] ? elems[0][key] : null;
+  return arr(elems)[0] ? arr(elems)[0][key] : null;
 }
 
 function parents(elems, selector) {
-  return from(propElem(elems, 'parentNode', selector, true), ElementCollection).sort().reverse();
+  return from(propElem(elems, 'parentNode', selector, true)).sort().reverse();
 }
 
 function propElem(collection, prop, selector, multiple, includeFirst, stopAt, reverse) {
@@ -2126,8 +2184,16 @@ function propElem(collection, prop, selector, multiple, includeFirst, stopAt, re
     return elem === sel;
   };
 
-  for (var i = reverse ? collection.length - 1 : 0; reverse ? i >= 0 : i < collection.length; reverse ? i-- : i++) {
-    var elem = collection[i];
+  var coll;
+
+  if (collection instanceof ElementCollection) {
+    coll = arr(collection);
+  } else {
+    coll = collection;
+  }
+
+  for (var i = reverse ? coll.length - 1 : 0; reverse ? i >= 0 : i < coll.length; reverse ? i-- : i++) {
+    var elem = coll[i];
     if (!elem) continue;
     if (cache.has(elem)) continue;
     cache.add(elem);
@@ -2170,33 +2236,28 @@ function objectOrProp(name, set, each) {
   return wasSet;
 }
 
-function from(object, Class) {
-  if (typeof object !== 'object' || !object) return new Class();
-  if (Class.isPrototypeOf(object)) return object;
+function from(object) {
+  if (typeof object !== 'object' || !object) return new ElementCollection();
+  if (object instanceof ElementCollection) return object;
+  var size = 0;
 
-  if (object instanceof Array || object instanceof NodeList || object instanceof HTMLCollection) {
-    var i;
-    var arr = new Class(object.length);
-
-    for (i = 0; i < object.length; i++) {
-      arr[i] = object[i];
-    }
-
-    return arr;
+  if (object instanceof Array) {
+    size = object.length;
+  } else if (object instanceof Set) {
+    size = object.size;
+  } else {
+    return new ElementCollection(...[...object].filter(el => el instanceof Element));
   }
 
-  if (object.size) {
-    var _i = 0;
+  var res = new ElementCollection(size);
+  var objArr = arr(res);
+  var i = 0;
 
-    var _arr = new Class(object.size);
-
-    object.forEach(item => {
-      _arr[_i++] = item;
-    });
-    return _arr;
+  for (var item of object) {
+    objArr[i++] = item;
   }
 
-  return Class.from(object);
+  return res;
 }
 
 function getStore(elem, store, defaultValue) {
@@ -2227,7 +2288,7 @@ var regKeyValName = /^\s*\(([a-zA-Z$_][a-zA-Z$_\d]*)\s*,\s*([a-zA-Z$_][a-zA-Z$_\
 var regForbiddenAttr = /^(on|:|@|x-)/;
 var regHrefJS = /^\s*javascript:/;
 function wrap$1(selector, context) {
-  return Object.assign(Object.create(ElementCollection$1.prototype), wrap(selector, context));
+  return Object.assign(wrap(selector, context), Object.create(ElementCollection$1.prototype));
 }
 
 function walkFindSubs(elem) {
@@ -2251,9 +2312,9 @@ function walkFindSubs(elem) {
 class ElementCollection$1 extends ElementCollection {
   html(content) {
     if (content === undefined) {
-      var _this$;
+      var _this$get;
 
-      return (_this$ = this[0]) === null || _this$ === void 0 ? void 0 : _this$.innerHTML;
+      return (_this$get = this.get(0)) === null || _this$get === void 0 ? void 0 : _this$get.innerHTML;
     }
 
     var contentElem;
@@ -2284,7 +2345,7 @@ class ElementCollection$1 extends ElementCollection {
   }
 
   text(set) {
-    var _this$get;
+    var _this$get2;
 
     if (set !== undefined) {
       this.forEach(elem => {
@@ -2294,15 +2355,16 @@ class ElementCollection$1 extends ElementCollection {
       return this;
     }
 
-    return (_this$get = this.get(0)) === null || _this$get === void 0 ? void 0 : _this$get.textContent.trim();
+    return (_this$get2 = this.get(0)) === null || _this$get2 === void 0 ? void 0 : _this$get2.textContent.trim();
   }
 
   detach() {
     var contentElem = document.createElement('template');
-    this.forEach(elem => {
+
+    for (var elem of this) {
       unsubNested(getStore(elem, 'htmlSubs'));
       contentElem.appendChild(elem);
-    });
+    }
     return contentElem.content;
   }
 
@@ -2310,43 +2372,8 @@ class ElementCollection$1 extends ElementCollection {
 allowedPrototypes.set(ElementCollection, new Set());
 allowedPrototypes.set(ElementCollection$1, new Set());
 
-var $watch = (variable, callback) => {
-  if (!watchListen) return {
-    unsubscribe: () => undefined
-  };
-  watchListen = false;
-  var subUnsubs = [];
-  var update = false;
-
-  var _loop = function _loop(item) {
-    var lastVal = void 0;
-    var val = void 0;
-    subUnsubs.push(sandbox.subscribeSet(item.obj, item.name, () => {
-      val = item.obj[item.name];
-
-      if (val !== lastVal) {
-        if (!update) {
-          call(() => {
-            update = false;
-
-            if (val !== lastVal) {
-              var temp = lastVal;
-              lastVal = val;
-              callback(val, temp);
-            }
-          });
-        }
-
-        update = true;
-      }
-    }).unsubscribe);
-  };
-
-  for (var item of watchGets) {
-    _loop(item);
-  }
-
-  watchGets.length = 0;
+var $watch = (cb, callback) => {
+  var subUnsubs = watch(cb, callback);
   return {
     unsubscribe: () => unsubNested(subUnsubs)
   };
@@ -2368,11 +2395,8 @@ class ElementScope {
 function getRootElement(scopes) {
   var _scopes$;
 
-  return (_scopes$ = scopes[0]) === null || _scopes$ === void 0 ? void 0 : _scopes$.$el[0];
+  return (_scopes$ = scopes[0]) === null || _scopes$ === void 0 ? void 0 : _scopes$.$el.get(0);
 }
-
-var watchGets = [];
-var watchListen = false;
 
 class RootScope extends ElementScope {
   constructor() {
@@ -2401,11 +2425,10 @@ function defineComponent(name, comp) {
 }
 function init(elems, component) {
   var runs = [];
-  (elems ? wrap$1(elems, $document) : $document.search('[x-app]').not('[x-app] [x-app]')).once('x-processed').forEach(elem => {
+  (elems ? wrap$1(elems, $document) : $document.find('[x-app]').not('[x-app] [x-app]')).once('x-processed').forEach(elem => {
     var comp = component || elem.getAttribute('x-app');
     var subs = [];
     var scope = getStore(elem, 'scope', components[comp] || getScope(elem, subs, {}, true));
-    console.log(scope);
     var processed = processHtml(elem, subs, defaultDelegateObject);
     elem.setAttribute('x-processed', '');
     runs.push(() => processed.run([scope]));
@@ -2453,133 +2476,112 @@ function call(cb) {
     calls.length = 0;
 
     for (var c of toCall) {
-      c();
+      try {
+        c();
+      } catch (err) {
+        console.error(err);
+      }
     }
   });
 }
 
-function watch(root, code, cb, scopes, digestObj) {
-  var gets = new Map();
-  var unsub = sandbox.subscribeGet((obj, name) => {
-    var names = gets.get(obj) || new Set();
-    names.add(name);
-    gets.set(obj, names);
-  }).unsubscribe;
-  var val;
+function watchRun(scopes, code) {
+  return () => run(getRootElement(scopes), 'return ' + code, scopes);
+}
 
-  try {
-    val = run(root, 'return ' + code, ...scopes);
-  } catch (err) {
-    console.error(err);
-  }
-
-  unsub();
+function watch(toWatch, handler) {
+  var watchGets = new Map();
+  var subUnsubs = [];
+  var lastVal;
+  var update = false;
+  var start = Date.now();
+  var count = 0;
 
   var digest = () => {
-    call(() => {
-      if (Date.now() - digestObj.countStart > 500) {
-        if (digestObj.count++ > 100) {
-          throw new Error('Infinite digest detected');
-        }
+    unsubNested(subUnsubs);
 
-        digestObj.count = 0;
-        digestObj.countStart = Date.now();
+    if (Date.now() - start > 1000) {
+      count = 0;
+      start = Date.now();
+    } else {
+      if (count++ > 50) {
+        throw new Error('Too many digests too quickly');
       }
+    }
 
-      unsubNested(digestObj.subs);
-      var s = watch(root, code, cb, scopes, digestObj);
-      digestObj.subs.push(...s);
+    var g = sandbox.subscribeGet((obj, name) => {
+      var list = watchGets.get(obj) || new Set();
+      list.add(name);
+      watchGets.set(obj, list);
     });
+    var val;
+
+    try {
+      val = toWatch();
+    } catch (err) {
+      g.unsubscribe();
+      throw err;
+    }
+
+    g.unsubscribe();
+
+    for (var item of watchGets) {
+      var obj = item[0];
+
+      for (var name of item[1]) {
+        subUnsubs.push(sandbox.subscribeSet(obj, name, () => {
+          if (update) return;
+          update = true;
+          call(() => {
+            update = false;
+            digest();
+          });
+        }).unsubscribe);
+      }
+    }
+
+    watchGets.clear();
+
+    if (val !== lastVal) {
+      var temp = lastVal;
+      lastVal = val;
+      handler(val, temp);
+    }
   };
 
-  var lastVal = undefined;
-
-  if (!digestObj) {
-    var subs = [];
-    digestObj = {
-      digest,
-      count: 0,
-      countStart: Date.now(),
-      lastVal: val,
-      subs
-    };
-  } else {
-    lastVal = digestObj.lastVal;
-    digestObj.digest = digest;
-    digestObj.lastVal = val;
-  }
-
-  gets.forEach((g, obj) => {
-    g.forEach(name => {
-      digestObj.subs.push(sandbox.subscribeSet(obj, name, () => {
-        digestObj.digest();
-      }).unsubscribe);
-    });
-  });
-
-  if (lastVal !== val) {
-    var res = cb(val, digestObj.lastVal);
-
-    if (res instanceof Promise) {
-      res.then(() => {
-        digestObj.digest();
-      }, err => {
-        console.error(err);
-      });
-    }
-  }
-
-  return digestObj.subs;
+  digest();
+  return subUnsubs;
 }
 var sandboxCache = new WeakMap();
-function run(el, code) {
+function run(el, code, scopes) {
   el = el || document;
   var codes = sandboxCache.get(el) || {};
   sandboxCache.set(el, codes);
   codes[code] = codes[code] || sandbox.compile(code);
-  var unsub = sandbox.subscribeGet((obj, name) => {
-    if (obj[name] === $watch) {
-      watchListen = true;
-    } else if (watchListen) {
-      watchGets.push({
-        obj,
-        name
-      });
-    }
-  });
-  watchListen = false;
-
-  for (var _len = arguments.length, scopes = new Array(_len > 2 ? _len - 2 : 0), _key = 2; _key < _len; _key++) {
-    scopes[_key - 2] = arguments[_key];
-  }
-
-  var ret = codes[code](...scopes);
-  unsub.unsubscribe();
-  watchGets.length = 0;
-  return ret;
+  return codes[code](...scopes);
 }
 var directives = {};
 defineDirective('show', function (exec) {
+  for (var _len = arguments.length, scopes = new Array(_len > 1 ? _len - 1 : 0), _key = 1; _key < _len; _key++) {
+    scopes[_key - 1] = arguments[_key];
+  }
+
+  return watch(watchRun(scopes, exec.js), (val, lastVal) => {
+    exec.element.classList.toggle('hide', !val);
+  });
+});
+defineDirective('text', function (exec) {
   for (var _len2 = arguments.length, scopes = new Array(_len2 > 1 ? _len2 - 1 : 0), _key2 = 1; _key2 < _len2; _key2++) {
     scopes[_key2 - 1] = arguments[_key2];
   }
 
-  return watch(getRootElement(scopes), exec.js, (val, lastVal) => {
-    exec.element.classList.toggle('hide', !val);
-  }, scopes);
-});
-defineDirective('text', function (exec) {
-  for (var _len3 = arguments.length, scopes = new Array(_len3 > 1 ? _len3 - 1 : 0), _key3 = 1; _key3 < _len3; _key3++) {
-    scopes[_key3 - 1] = arguments[_key3];
-  }
-
-  return watch(getRootElement(scopes), exec.js, (val, lastVal) => {
+  return watch(watchRun(scopes, exec.js), (val, lastVal) => {
     wrap$1(exec.element).text(val);
-  }, scopes);
+  });
 });
 defineDirective('ref', function (exec) {
-  for (var _len4 = arguments.length, scopes = new Array(_len4 > 1 ? _len4 - 1 : 0), _key4 = 1; _key4 < _len4; _key4++) {
-    scopes[_key4 - 1] = arguments[_key4];
+  for (var _len3 = arguments.length, scopes = new Array(_len3 > 1 ? _len3 - 1 : 0), _key3 = 1; _key3 < _len3; _key3++) {
+    scopes[_key3 - 1] = arguments[_key3];
   }
 
   if (!exec.js.match(regVarName)) {
@@ -2589,14 +2591,14 @@ defineDirective('ref', function (exec) {
   var name = getScope(exec.element, [], {
     name: exec.js.trim()
   });
-  run(document, "$refs[name] = $el", ...scopes, name);
+  run(document, "$refs[name] = $el", [...scopes, name]);
   return [() => {
-    run(document, "delete $refs[name]", ...scopes, name);
+    run(document, "delete $refs[name]", [...scopes, name]);
   }];
 });
 defineDirective('model', function (exec) {
-  for (var _len5 = arguments.length, scopes = new Array(_len5 > 1 ? _len5 - 1 : 0), _key5 = 1; _key5 < _len5; _key5++) {
-    scopes[_key5 - 1] = arguments[_key5];
+  for (var _len4 = arguments.length, scopes = new Array(_len4 > 1 ? _len4 - 1 : 0), _key4 = 1; _key4 < _len4; _key4++) {
+    scopes[_key4 - 1] = arguments[_key4];
   }
 
   var el = exec.element;
@@ -2607,27 +2609,27 @@ defineDirective('model', function (exec) {
 
   var change = () => {
     last = !isContentEditable ? $el.val() : $el.html();
-    run(getRootElement(scopes), exec.js + ' = $$value', ...scopes, getScope(el, exec.subs, {
+    run(getRootElement(scopes), exec.js + ' = $$value', [...scopes, getScope(el, exec.subs, {
       $$value: last
-    }));
+    })]);
   };
 
   el.addEventListener(isInput ? 'input' : 'change', change);
-  var subs = watch(getRootElement(scopes), exec.js, (val, lastVal) => {
+  var subs = watch(watchRun(scopes, exec.js), (val, lastVal) => {
     if (isContentEditable) {
       $el.html(val);
     } else {
       $el.val(val);
     }
-  }, scopes);
+  });
   return [() => exec.element.removeEventListener(isInput ? 'input' : 'change', change), subs];
 });
 defineDirective('html', function (exec) {
-  for (var _len6 = arguments.length, scopes = new Array(_len6 > 1 ? _len6 - 1 : 0), _key6 = 1; _key6 < _len6; _key6++) {
-    scopes[_key6 - 1] = arguments[_key6];
+  for (var _len5 = arguments.length, scopes = new Array(_len5 > 1 ? _len5 - 1 : 0), _key5 = 1; _key5 < _len5; _key5++) {
+    scopes[_key5 - 1] = arguments[_key5];
   }
 
-  return watch(getRootElement(scopes), exec.js, (val, lastVal) => {
+  return watch(watchRun(scopes, exec.js), (val, lastVal) => {
     exec.element.innerHTML = '';
     var nestedSubs = [];
     exec.subs.push(nestedSubs);
@@ -2635,7 +2637,7 @@ defineDirective('html', function (exec) {
     var processed = processHtml(val, nestedSubs, defaultDelegateObject);
     exec.element.appendChild(processed.elem);
     processed.run(scopes);
-  }, scopes);
+  });
 });
 function defineDirective(name, callback) {
   directives[name] = callback;
@@ -2643,8 +2645,8 @@ function defineDirective(name, callback) {
 
 function runDirective(exec) {
   if (directives[exec.directive]) {
-    for (var _len7 = arguments.length, scopes = new Array(_len7 > 1 ? _len7 - 1 : 0), _key7 = 1; _key7 < _len7; _key7++) {
-      scopes[_key7 - 1] = arguments[_key7];
+    for (var _len6 = arguments.length, scopes = new Array(_len6 > 1 ? _len6 - 1 : 0), _key6 = 1; _key6 < _len6; _key6++) {
+      scopes[_key6 - 1] = arguments[_key6];
     }
 
     return directives[exec.directive](exec, ...scopes);
@@ -2736,7 +2738,7 @@ function walkTree(element, parentSubs, ready, delegate) {
           getStore(comment, 'htmlSubs', currentSubs);
           var nestedSubs = [];
           currentSubs.push(nestedSubs);
-          currentSubs.push(watch(getRootElement(scopes), element.getAttribute('x-if'), (val, lastVal) => {
+          currentSubs.push(watch(watchRun(scopes, element.getAttribute('x-if')), (val, lastVal) => {
             if (val) {
               if (!ifElem) {
                 var template = document.createElement('template');
@@ -2754,7 +2756,7 @@ function walkTree(element, parentSubs, ready, delegate) {
                 unsubNested(nestedSubs);
               }
             }
-          }, scopes));
+          }));
           return scopes;
         });
         return {
@@ -2763,8 +2765,6 @@ function walkTree(element, parentSubs, ready, delegate) {
       }
 
       if (element.hasAttribute('x-for')) {
-        var _html = element.outerHTML;
-
         var _comment = document.createComment('x-for');
 
         element.after(_comment);
@@ -2801,7 +2801,7 @@ function walkTree(element, parentSubs, ready, delegate) {
           getStore(_comment, 'htmlSubs', currentSubs);
           var nestedSubs = [];
           currentSubs.push(nestedSubs);
-          currentSubs.push(watch(getRootElement(scopes), exp, (val, lastVal) => {
+          currentSubs.push(watch(watchRun(scopes, exp), val => {
             unsubNested(nestedSubs);
             items.forEach(item => {
               item.remove();
@@ -2810,7 +2810,7 @@ function walkTree(element, parentSubs, ready, delegate) {
             var runs = [];
             var i = -1;
 
-            var _loop2 = function _loop2(item) {
+            var _loop = function _loop(item) {
               i++;
               var forSubs = [];
               nestedSubs.push(forSubs);
@@ -2819,9 +2819,7 @@ function walkTree(element, parentSubs, ready, delegate) {
               };
               if (key) scope[key] = i;
               if (value) scope[value] = item;
-              var template = document.createElement('template');
-              template.innerHTML = _html;
-              var elem = template.content.firstElementChild;
+              var elem = element.cloneNode(true);
               elem.removeAttribute('x-for');
               var processed = processHtml(elem, forSubs, del);
 
@@ -2832,11 +2830,11 @@ function walkTree(element, parentSubs, ready, delegate) {
             };
 
             for (var item of val) {
-              _loop2(item);
+              _loop(item);
             }
 
             runs.forEach(run => run());
-          }, scopes));
+          }));
           return scopes;
         });
         return {
@@ -2854,7 +2852,7 @@ function walkTree(element, parentSubs, ready, delegate) {
         ready(scopes => {
           scopes = scopes.slice();
           scopes.push(getScope(element, currentSubs));
-          scopes.push(getDataScope(element, run(getRootElement(scopes), 'return ' + (element.getAttribute('x-data') || '{}'), ...scopes)));
+          scopes.push(getDataScope(element, run(getRootElement(scopes), 'return ' + (element.getAttribute('x-data') || '{}'), scopes)));
           return scopes;
         });
       }
@@ -2862,7 +2860,7 @@ function walkTree(element, parentSubs, ready, delegate) {
       if (element instanceof HTMLScriptElement) {
         if (element.type === 'scopejs') {
           ready(scopes => {
-            run(getRootElement(scopes), element.innerHTML, ...scopes);
+            run(getRootElement(scopes), element.innerHTML, scopes);
             return scopes;
           });
         } else {
@@ -2892,23 +2890,23 @@ function walkTree(element, parentSubs, ready, delegate) {
               }
             }
           } else if (att.nodeName === 'srcdoc' && element instanceof HTMLIFrameElement) {
-            var _html2 = att.nodeValue;
+            var _html = att.nodeValue;
             element.removeAttribute(att.nodeName);
 
             if (!element.hasAttribute(':srcdoc')) {
-              element.setAttribute(':srcdoc', _html2);
+              element.setAttribute(':srcdoc', _html);
             }
           }
         }
 
-        var _loop3 = function _loop3(_att) {
+        var _loop2 = function _loop2(_att) {
           if (_att.nodeName.startsWith(':')) {
             var _at = _att.nodeName.slice(1);
 
             ready(scopes => {
               var nestedSubs = [];
               currentSubs.push(nestedSubs);
-              currentSubs.push(watch(getRootElement(scopes), _att.nodeValue, (val, lastVal) => {
+              currentSubs.push(watch(watchRun(scopes, _att.nodeValue), (val, lastVal) => {
                 if (typeof val === 'object' && ['style', 'class'].includes(_at)) {
                   if (_at === 'class') {
                     $element.toggleClass(val);
@@ -2930,7 +2928,7 @@ function walkTree(element, parentSubs, ready, delegate) {
                 } else if (!_at.match(regForbiddenAttr)) {
                   $element.attr(_at, val);
                 }
-              }, scopes));
+              }));
               return scopes;
             });
           } else if (_att.nodeName.startsWith('@')) {
@@ -2938,9 +2936,9 @@ function walkTree(element, parentSubs, ready, delegate) {
 
             ready(scopes => {
               var ev = e => {
-                run(getRootElement(scopes), _att.nodeValue, ...scopes, getScope(element, currentSubs, {
+                run(getRootElement(scopes), _att.nodeValue, [...scopes, getScope(element, currentSubs, {
                   $event: e
-                }));
+                })]);
               };
 
               if (parts[1] === 'once') {
@@ -2966,7 +2964,7 @@ function walkTree(element, parentSubs, ready, delegate) {
         };
 
         for (var _att of element.attributes) {
-          _loop3(_att);
+          _loop2(_att);
         }
       }
     }();
@@ -2974,7 +2972,7 @@ function walkTree(element, parentSubs, ready, delegate) {
     if (typeof _ret === "object") return _ret.v;
   }
 
-  var _loop4 = function _loop4(el) {
+  var _loop3 = function _loop3(el) {
     if (el instanceof Element) {
       var execSteps = [];
 
@@ -3001,9 +2999,9 @@ function walkTree(element, parentSubs, ready, delegate) {
           getStore(placeholder, 'htmlSubs', currentSubs);
           pushSubs();
           ready(scopes => {
-            currentSubs.push(watch(getRootElement(scopes), s.slice(2, -2), (val, lastVal) => {
+            currentSubs.push(watch(watchRun(scopes, s.slice(2, -2)), (val, lastVal) => {
               placeholder.textContent = val;
-            }, scopes));
+            }));
             return scopes;
           });
           nodes.push(placeholder);
@@ -3022,7 +3020,7 @@ function walkTree(element, parentSubs, ready, delegate) {
   };
 
   for (var el of element.childNodes) {
-    _loop4(el);
+    _loop3(el);
   }
 }
 
