@@ -12,7 +12,7 @@ export interface DelegateObject {
 }
 export declare const defaultDelegateObject: DelegateObject;
 export declare class ElementCollection {
-    constructor(...items: (Element | number)[]);
+    constructor(item?: number | Element, ...items: Element[]);
     get size(): number;
     get $elements(): Element[];
     [Symbol.iterator](): IterableIterator<Element>;

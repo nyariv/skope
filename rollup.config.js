@@ -11,7 +11,8 @@ export default {
     dir: 'dist',
     name: 'ScopeJS',
     format: 'es',
-    exports: 'named'
+    exports: 'named',
+    sourcemap: true
   },
   plugins: [
     typescript(),

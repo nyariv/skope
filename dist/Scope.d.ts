@@ -5,7 +5,7 @@ export declare const allowedPrototypes: Map<any, Set<string>>;
 export declare const sandbox: Sandbox;
 export declare function wrap(selector: wrapType, context?: ElementCollection | EC): ElementCollection;
 export declare class ElementCollection extends EC {
-    html(content?: wrapType): string | this;
+    html(content?: string | Node | ElementCollection): string | this;
     text(set?: string): string | this;
     detach(): DocumentFragment;
 }
@@ -21,7 +21,7 @@ export default function init(elems?: wrapType, component?: string): void;
 export declare function getScopes(element: Element, newScope?: {
     [variable: string]: any;
 }, subs?: subs): ElementScope[];
-export declare function watch(toWatch: () => any, handler: (val: any, lastVal: any) => void | Promise<void>): subs;
+export declare function watch(toWatch: () => any, handler: (val: unknown, lastVal: unknown) => void | Promise<void>): subs;
 export declare function run(el: Node, code: string, scopes: ElementScope[]): any;
 export interface DirectiveExec {
     element: Element;

@@ -1389,6 +1389,112 @@ class Sandbox {
 
 }
 
+var defaultHTMLWhiteList = [HTMLBRElement, HTMLBodyElement, HTMLDListElement, HTMLDataElement, HTMLDataListElement, HTMLDialogElement, HTMLDivElement, HTMLFieldSetElement, HTMLHRElement, HTMLHeadingElement, HTMLLIElement, HTMLLegendElement, HTMLMapElement, HTMLMetaElement, HTMLMeterElement, HTMLModElement, HTMLOListElement, HTMLOutputElement, HTMLParagraphElement, HTMLPreElement, HTMLProgressElement, HTMLQuoteElement, HTMLSpanElement, HTMLTableCaptionElement, HTMLTableCellElement, HTMLTableColElement, HTMLTableElement, HTMLTableSectionElement, HTMLTableRowElement, HTMLTimeElement, HTMLTitleElement, HTMLUListElement, HTMLUnknownElement, HTMLTemplateElement, HTMLCanvasElement, HTMLElement];
+var globalAllowedAtttributes = new Set(['id', 'class', 'style', 'alt', 'role', 'aria-label', 'aria-labelledby', 'aria-hidden', 'tabindex', 'title', 'dir', 'lang', 'height', 'width']);
+var types = new Map();
+
+function sanitizeType(t, allowedAttributes, element) {
+  var s = new Set(allowedAttributes);
+
+  for (var type of t) {
+    types.set(type, {
+      attributes: s,
+      element
+    });
+  }
+}
+
+sanitizeType(defaultHTMLWhiteList, [], () => {
+  return true;
+});
+sanitizeType([HTMLAnchorElement, SVGAElement, HTMLAreaElement], ['href', 'xlink:href', 'rel', 'shape', 'coords'], el => {
+  return true;
+});
+sanitizeType([], ['href'], el => {
+  return true;
+});
+sanitizeType([HTMLButtonElement], ['type'], el => {
+  return true;
+});
+sanitizeType([HTMLInputElement, HTMLSelectElement, HTMLOptGroupElement, HTMLOptionElement, HTMLLabelElement, HTMLTextAreaElement], ['value', 'type', 'checked', 'selected', 'name', 'for', 'max', 'min', 'placeholder', 'readonly', 'size', 'multiple', 'step', 'autocomplete', 'cols', 'rows', 'disabled', 'required'], el => {
+  return true;
+});
+sanitizeType([HTMLScriptElement], ['type'], el => {
+  if (!el.type || el.type === 'text/javascript') {
+    el.type = 'scopejs';
+  }
+
+  return el.type === "scopejs";
+});
+sanitizeType([HTMLStyleElement], [], el => {
+  return true;
+});
+sanitizeType([HTMLPictureElement, HTMLImageElement, HTMLAudioElement, HTMLTrackElement, HTMLVideoElement, HTMLSourceElement], ['src', 'srcset', 'sizes', 'poster', 'autoplay', 'contorls', 'muted', 'loop', 'volume', 'loading'], el => {
+  return true;
+});
+var regHrefJS = /^\s*javascript:/i;
+var regValidSrc = /^((https?:)?\/\/|\/|#)/;
+var regSystemAtt = /^(:|@|x-)/;
+var srcAttributes = new Set(['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from']);
+function santizeAttribute(element, attName, attValue) {
+  var preprocess = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
+  var allowed = types.get(element.constructor);
+  attName = attName.toLowerCase();
+
+  if (attName.match(regSystemAtt)) {
+    if (!preprocess) return false;
+  } else if (attName.startsWith('on')) {
+    if (preprocess) {
+      element.setAttribute('@' + attName.slice(2), attValue);
+    }
+
+    return false;
+  } else if (allowed.attributes.has(attName) && srcAttributes.has(attName) && attValue !== 'javascript:void(0)') {
+    var isJs = attValue.match(regHrefJS);
+
+    if (isJs) {
+      if (preprocess && (attName === 'href' || attName === 'xlink:href')) {
+        if (!element.hasAttribute('@click')) {
+          element.setAttribute('@click', attValue.substring(isJs[0].length));
+        }
+
+        element.setAttribute(attName, 'javascript:void(0)');
+      } else {
+        return false;
+      }
+    } else if (!attValue.match(regValidSrc)) {
+      return false;
+    }
+  } else if (!allowed.attributes.has(attName) && !globalAllowedAtttributes.has(attName)) {
+    return false;
+  }
+
+  return true;
+}
+function sanitizeHTML(element) {
+  var allowed = types.get(element.constructor);
+
+  if (!(element instanceof DocumentFragment)) {
+    if (!allowed || !allowed.element(element)) {
+      element.remove();
+      return;
+    } else {
+      for (var att of element.attributes) {
+        var attValue = att.nodeValue;
+        var attName = att.nodeName;
+
+        if (!santizeAttribute(element, attName, attValue, true)) {
+          element.removeAttribute(att.nodeName);
+        }
+      }
+    }
+  }
+
+  for (var el of element.children) {
+    sanitizeHTML(el);
+  }
+}
+
 var elementStorage = new WeakMap();
 var arrs = new WeakMap();
 
@@ -1413,12 +1519,12 @@ var defaultDelegateObject = {
 
 };
 class ElementCollection {
-  constructor() {
-    for (var _len = arguments.length, items = new Array(_len), _key = 0; _key < _len; _key++) {
-      items[_key] = arguments[_key];
+  constructor(item) {
+    for (var _len = arguments.length, items = new Array(_len > 1 ? _len - 1 : 0), _key = 1; _key < _len; _key++) {
+      items[_key - 1] = arguments[_key];
     }
 
-    arrs.set(this, new Array(...items));
+    arrs.set(this, new Array(item, ...items));
   }
 
   get size() {
@@ -1748,10 +1854,12 @@ class ElementCollection {
 
   attr(key, set) {
     if (objectOrProp(key, set, (k, v) => {
-      if (("" + v).match(/^\s*javascript:/)) throw new Error('"javascript:" attribute values are not allowed:' + v);
-      if (k.match(/^(on|:|@|x-|srcdoc)/)) throw new Error("Attribute not allowed: " + k);
       this.forEach(elem => {
-        elem.setAttribute(k, v + "");
+        if (santizeAttribute(elem, k, v + "")) {
+          elem.setAttribute(k, v + "");
+        } else {
+          throw new Error("Illegal attribute (" + k + ") value for " + elem.nodeName + ": " + v);
+        }
       });
     })) return this;
     return arr(this)[0] && typeof key === 'string' ? arr(this)[0].getAttribute(key) : null;
@@ -2285,10 +2393,13 @@ var allowedPrototypes = Sandbox.SAFE_PROTOTYPES;
 var sandbox = new Sandbox(allowedGlobals, allowedPrototypes);
 var regVarName = /^\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*$/;
 var regKeyValName = /^\s*\(([a-zA-Z$_][a-zA-Z$_\d]*)\s*,\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*\)$/;
-var regForbiddenAttr = /^(on|:|@|x-)/;
-var regHrefJS = /^\s*javascript:/;
+
+function isIterable(object) {
+  return object !== null && typeof object === 'object' && typeof object[Symbol.iterator] === 'function';
+}
+
 function wrap$1(selector, context) {
-  return Object.assign(wrap(selector, context), Object.create(ElementCollection$1.prototype));
+  return new ElementCollection$1(...wrap(selector, context));
 }
 
 function walkFindSubs(elem) {
@@ -2318,29 +2429,28 @@ class ElementCollection$1 extends ElementCollection {
     }
 
     var contentElem;
+
+    if (content instanceof ElementCollection$1) {
+      content = content.detach();
+    }
+
     var elem = this.get(0);
     if (!elem) return this;
+    contentElem = preprocessHTML(content);
+    var subsNested = [];
+    var found = getStore(elem, 'childrenSubs', subsNested);
 
-    if (typeof content !== 'string') {
-      contentElem = wrap$1(content).detach();
+    if (found !== subsNested) {
+      var subs = getStore(elem, 'htmlSubs', []);
+      subs.push(subsNested);
     }
 
-    unsubNested(walkFindSubs(elem));
-    var subs = [];
-    var found = getStore(elem, 'htmlSubs', subs);
-
-    if (found === subs) {
-      var parentSubs = walkFindSubs(elem, true);
-      parentSubs.push(subs);
-    } else {
-      subs = found;
-    }
-
-    var nestedSubs = [];
-    subs.push(nestedSubs);
-    var processed = processHtml(typeof content !== 'string' ? contentElem : content, nestedSubs, defaultDelegateObject);
+    subsNested = found;
+    unsubNested(subsNested);
+    var processed = processHTML(contentElem, subsNested, defaultDelegateObject);
+    elem.innerHTML = '';
     elem.appendChild(processed.elem);
-    processed.run(getScopes(elem, {}, subs));
+    processed.run(getScopes(elem, {}, subsNested));
     return this;
   }
 
@@ -2429,7 +2539,8 @@ function init(elems, component) {
     var comp = component || elem.getAttribute('x-app');
     var subs = [];
     var scope = getStore(elem, 'scope', components[comp] || getScope(elem, subs, {}, true));
-    var processed = processHtml(elem, subs, defaultDelegateObject);
+    preprocessHTML(elem);
+    var processed = processHTML(elem, subs, defaultDelegateObject);
     elem.setAttribute('x-processed', '');
     runs.push(() => processed.run([scope]));
   });
@@ -2498,8 +2609,6 @@ function watch(toWatch, handler) {
   var count = 0;
 
   var digest = () => {
-    unsubNested(subUnsubs);
-
     if (Date.now() - start > 1000) {
       count = 0;
       start = Date.now();
@@ -2509,6 +2618,7 @@ function watch(toWatch, handler) {
       }
     }
 
+    unsubNested(subUnsubs);
     var g = sandbox.subscribeGet((obj, name) => {
       var list = watchGets.get(obj) || new Set();
       list.add(name);
@@ -2576,7 +2686,7 @@ defineDirective('text', function (exec) {
   }
 
   return watch(watchRun(scopes, exec.js), (val, lastVal) => {
-    wrap$1(exec.element).text(val);
+    wrap$1(exec.element).text(val + "");
   });
 });
 defineDirective('ref', function (exec) {
@@ -2617,7 +2727,7 @@ defineDirective('model', function (exec) {
   el.addEventListener(isInput ? 'input' : 'change', change);
   var subs = watch(watchRun(scopes, exec.js), (val, lastVal) => {
     if (isContentEditable) {
-      $el.html(val);
+      $el.html(val + "");
     } else {
       $el.val(val);
     }
@@ -2630,13 +2740,9 @@ defineDirective('html', function (exec) {
   }
 
   return watch(watchRun(scopes, exec.js), (val, lastVal) => {
-    exec.element.innerHTML = '';
-    var nestedSubs = [];
-    exec.subs.push(nestedSubs);
-    unsubNested(walkFindSubs(exec.element));
-    var processed = processHtml(val, nestedSubs, defaultDelegateObject);
-    exec.element.appendChild(processed.elem);
-    processed.run(scopes);
+    if (val instanceof Node || typeof val === 'string' || val instanceof ElementCollection$1) {
+      wrap$1(exec.element).html(val);
+    }
   });
 });
 function defineDirective(name, callback) {
@@ -2666,20 +2772,28 @@ function walkerInstance() {
   };
 }
 
-function processHtml(elem, subs, delegate) {
-  var template;
-  var exec = walkerInstance();
+function preprocessHTML(html) {
+  var elem;
 
-  if (typeof elem === 'string') {
-    template = document.createElement('template');
-    template.innerHTML = elem;
-    walkTree(template.content, subs, exec.ready, delegate);
+  if (typeof html === 'string') {
+    var template = document.createElement('template');
+    template.innerHTML = html;
+    elem = template.content;
+  } else if (html instanceof Element) {
+    elem = html;
   } else {
-    walkTree(elem, subs, exec.ready, delegate);
+    return html;
   }
 
+  sanitizeHTML(elem);
+  return elem;
+}
+
+function processHTML(elem, subs, delegate) {
+  var exec = walkerInstance();
+  walkTree(elem, subs, exec.ready, delegate);
   return {
-    elem: typeof elem === 'string' ? template.content : elem,
+    elem: elem,
     run: exec.run
   };
 }
@@ -2716,21 +2830,15 @@ function walkTree(element, parentSubs, ready, delegate) {
 
   if (element instanceof Element) {
     var _ret = function () {
-      if (["OBJECT", "EMBED"].includes(element.tagName)) {
-        element.remove();
-        return {
-          v: void 0
-        };
-      }
-
       pushSubs();
       var $element = wrap$1(element);
       element.removeAttribute('x-cloak');
 
       if (element.hasAttribute('x-if')) {
-        var html = element.outerHTML;
         var comment = document.createComment('x-if');
         var ifElem;
+        var at = element.getAttribute('x-if');
+        element.removeAttribute('x-if');
         element.before(comment);
         element.remove();
         deleteStore(element, 'htmlSubs');
@@ -2738,14 +2846,11 @@ function walkTree(element, parentSubs, ready, delegate) {
           getStore(comment, 'htmlSubs', currentSubs);
           var nestedSubs = [];
           currentSubs.push(nestedSubs);
-          currentSubs.push(watch(watchRun(scopes, element.getAttribute('x-if')), (val, lastVal) => {
+          currentSubs.push(watch(watchRun(scopes, at), (val, lastVal) => {
             if (val) {
               if (!ifElem) {
-                var template = document.createElement('template');
-                template.innerHTML = html;
-                ifElem = template.content.firstElementChild;
-                ifElem.removeAttribute('x-if');
-                var processed = processHtml(ifElem, nestedSubs, delegate);
+                ifElem = element.cloneNode(true);
+                var processed = processHTML(ifElem, nestedSubs, delegate);
                 comment.after(processed.elem);
                 processed.run([...scopes, getScope(ifElem, nestedSubs)]);
               }
@@ -2772,11 +2877,15 @@ function walkTree(element, parentSubs, ready, delegate) {
         deleteStore(element, 'htmlSubs');
         var items = new Set();
         var exp;
-        var at = element.getAttribute('x-for');
-        var split = at.split(' in ');
+
+        var _at = element.getAttribute('x-for');
+
+        element.removeAttribute('x-for');
+
+        var split = _at.split(' in ');
 
         if (split.length < 2) {
-          throw new Error('In valid x-for directive: ' + at);
+          throw new Error('In valid x-for directive: ' + _at);
         } else {
           exp = split.slice(1).join(' in ');
         }
@@ -2790,7 +2899,7 @@ function walkTree(element, parentSubs, ready, delegate) {
           value = varMatch[1];
         } else {
           var doubleMatch = varsExp.match(regKeyValName);
-          if (!doubleMatch) throw new Error('In valid x-for directive: ' + at);
+          if (!doubleMatch) throw new Error('In valid x-for directive: ' + _at);
           key = doubleMatch[1];
           value = doubleMatch[2];
         }
@@ -2802,6 +2911,7 @@ function walkTree(element, parentSubs, ready, delegate) {
           var nestedSubs = [];
           currentSubs.push(nestedSubs);
           currentSubs.push(watch(watchRun(scopes, exp), val => {
+            if (!isIterable(val)) return;
             unsubNested(nestedSubs);
             items.forEach(item => {
               item.remove();
@@ -2820,8 +2930,7 @@ function walkTree(element, parentSubs, ready, delegate) {
               if (key) scope[key] = i;
               if (value) scope[value] = item;
               var elem = element.cloneNode(true);
-              elem.removeAttribute('x-for');
-              var processed = processHtml(elem, forSubs, del);
+              var processed = processHTML(elem, forSubs, del);
 
               _comment.before(processed.elem);
 
@@ -2871,44 +2980,16 @@ function walkTree(element, parentSubs, ready, delegate) {
           v: void 0
         };
       } else {
-        for (var att of element.attributes) {
-          if (att.nodeName.startsWith('on')) {
-            element.setAttribute('@' + att.nodeName.slice(2), att.nodeValue);
-            element.removeAttribute(att.nodeName);
-          } else if (['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from'].includes(att.nodeName) && att.nodeValue !== 'javascript:void(0)') {
-            var isJs = att.nodeValue.match(regHrefJS);
-
-            if (isJs) {
-              if (att.nodeName === 'href' || att.nodeName === 'xlink:href') {
-                if (!element.hasAttribute('@click')) {
-                  element.setAttribute('@click', att.nodeValue.substring(isJs[0].length));
-                }
-
-                element.setAttribute(att.nodeName, 'javascript:void(0)');
-              } else {
-                element.removeAttribute(att.nodeName);
-              }
-            }
-          } else if (att.nodeName === 'srcdoc' && element instanceof HTMLIFrameElement) {
-            var _html = att.nodeValue;
-            element.removeAttribute(att.nodeName);
-
-            if (!element.hasAttribute(':srcdoc')) {
-              element.setAttribute(':srcdoc', _html);
-            }
-          }
-        }
-
-        var _loop2 = function _loop2(_att) {
-          if (_att.nodeName.startsWith(':')) {
-            var _at = _att.nodeName.slice(1);
+        var _loop2 = function _loop2(att) {
+          if (att.nodeName.startsWith(':')) {
+            var _at2 = att.nodeName.slice(1);
 
             ready(scopes => {
               var nestedSubs = [];
               currentSubs.push(nestedSubs);
-              currentSubs.push(watch(watchRun(scopes, _att.nodeValue), (val, lastVal) => {
-                if (typeof val === 'object' && ['style', 'class'].includes(_at)) {
-                  if (_at === 'class') {
+              currentSubs.push(watch(watchRun(scopes, att.nodeValue), (val, lastVal) => {
+                if (typeof val === 'object' && ['style', 'class'].includes(_at2)) {
+                  if (_at2 === 'class') {
                     $element.toggleClass(val);
                   } else {
                     if (element instanceof HTMLElement || element instanceof SVGElement) {
@@ -2917,26 +2998,17 @@ function walkTree(element, parentSubs, ready, delegate) {
                       }
                     }
                   }
-                } else if (_at === "srcdoc" && element instanceof HTMLIFrameElement) {
-                  var _element$contentWindo;
-
-                  (_element$contentWindo = element.contentWindow.document.querySelector(':root')) === null || _element$contentWindo === void 0 ? void 0 : _element$contentWindo.remove();
-                  unsubNested(nestedSubs);
-                  var processed = processHtml(val, nestedSubs, delegate);
-                  element.contentWindow.document.appendChild(processed.elem);
-                  processed.run([...scopes, getScope(element, currentSubs)]);
-                } else if (!_at.match(regForbiddenAttr)) {
-                  $element.attr(_at, val);
+                } else {
+                  $element.attr(_at2, val + "");
                 }
               }));
               return scopes;
             });
-          } else if (_att.nodeName.startsWith('@')) {
-            var parts = _att.nodeName.slice(1).split('.');
-
+          } else if (att.nodeName.startsWith('@')) {
+            var parts = att.nodeName.slice(1).split('.');
             ready(scopes => {
               var ev = e => {
-                run(getRootElement(scopes), _att.nodeValue, [...scopes, getScope(element, currentSubs, {
+                run(getRootElement(scopes), att.nodeValue, [...scopes, getScope(element, currentSubs, {
                   $event: e
                 })]);
               };
@@ -2949,12 +3021,12 @@ function walkTree(element, parentSubs, ready, delegate) {
 
               return scopes;
             });
-          } else if (_att.nodeName.startsWith('x-')) {
+          } else if (att.nodeName.startsWith('x-')) {
             ready(scopes => {
               currentSubs.push(runDirective({
                 element,
-                directive: _att.nodeName.slice(2),
-                js: _att.nodeValue,
+                directive: att.nodeName.slice(2),
+                js: att.nodeValue,
                 original: element.outerHTML,
                 subs: currentSubs
               }, ...scopes, getScope(element, currentSubs)));
@@ -2963,8 +3035,8 @@ function walkTree(element, parentSubs, ready, delegate) {
           }
         };
 
-        for (var _att of element.attributes) {
-          _loop2(_att);
+        for (var att of element.attributes) {
+          _loop2(att);
         }
       }
     }();
@@ -3000,7 +3072,7 @@ function walkTree(element, parentSubs, ready, delegate) {
           pushSubs();
           ready(scopes => {
             currentSubs.push(watch(watchRun(scopes, s.slice(2, -2)), (val, lastVal) => {
-              placeholder.textContent = val;
+              placeholder.textContent = val + "";
             }));
             return scopes;
           });
@@ -3095,3 +3167,4 @@ function walkText(s) {
 
 export default init;
 export { Component, ElementCollection$1 as ElementCollection, allowedGlobals, allowedPrototypes, defineComponent, defineDirective, getScopes, run, sandbox, unsubNested, watch, wrap$1 as wrap };
+//# sourceMappingURL=Scope.js.map
