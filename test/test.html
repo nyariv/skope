@@ -6,18 +6,38 @@
   <script src="../dist/Scope.js" type="module"></script>
   <title>Scope.js Test</title>
   <style>
-    div {cursor: pointer; user-select: none;}
+    [x-cloak] {display: none}
+    .containers {display: flex}
+    .containers > div {margin: 20px}
+    .rating {width: 200px}
+    [\@click] {cursor: pointer; user-select: none;}
   </style>
 </head>
-<body x-app>
-  <script type="scopejs">
-    let c = 1;
-    let range = [0];
-    $watch(() => c, (val) => console.log(val));
-  </script>
-  <input type="number" value="1" @input="range = Array($el.val()).keys()">
-  <div x-for="(a, x) in range" @click="++c">
-    <span x-for="b in [0,1,2,3,4]">{{ (a + c) % 6 > b ? '★' : '☆' }}</span>
+<body x-app x-cloak>
+  <div class="containers">
+    <div class="rating">
+      <script type="scopejs">
+        let c = 1;
+        let range = [0];
+        $watch(() => c, (val) => console.log(val));
+      </script>
+      <input type="number" value="1" @input="range = Array($el.val()).keys()">
+      <div x-for="(a, x) in range" @click="++c">
+        <span x-for="b in [0,1,2,3,4]">{{ (a + c) % 6 > b ? '★' : '☆' }}</span>
+      </div>
+    </div>
+    <div class="html">
+      <script type="scopejs">
+        let text = "type <i>here</i>";
+      </script>
+      <textarea x-model="text" :value="text" :cols="40" :rows="10"></textarea>
+      <div class="preview" x-html="text"></div>
+    </div>
+    <div class="if">
+      <script>let on = true;</script>
+      <label>Check me <input type="checkbox" x-model="on"></label>
+      <div>{{on ? '★' : '☆'}} <span x-if="on">on</span></div>
+    </div>
   </div>
   <script type="module">
     import init from "../dist/Scope.js";
