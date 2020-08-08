@@ -1,4 +1,7 @@
 "use strict";
+
+import { santizeAttribute } from "./HTMLSanitizer";
+
 // @ts-check
 /**
  * Tiny jQuery
@@ -55,8 +58,8 @@ export const defaultDelegateObject: DelegateObject = {
  */
 export class ElementCollection {
 
-  constructor(...items: (Element|number)[]) {
-    arrs.set(this, new Array(...items) as Element[]);
+  constructor(item?: number|Element, ...items: Element[]) {
+    arrs.set(this, new Array(item, ...items) as Element[]);
   }
 
   get size() {
@@ -398,10 +401,12 @@ export class ElementCollection {
    */
   attr(key: string|{[attr: string]: string|number}, set?: string|number) {
     if(objectOrProp(key, set, (k, v) => {
-      if (("" + v).match(/^\s*javascript:/)) throw new Error('"javascript:" attribute values are not allowed:' + v);
-      if (k.match(/^(on|:|@|x-|srcdoc)/)) throw new Error("Attribute not allowed: " + k)
       this.forEach((elem) => {
-        elem.setAttribute(k, v + "");
+        if (santizeAttribute(elem, k, v + "")) {
+          elem.setAttribute(k, v + "");
+        } else {
+          throw new Error("Illegal attribute (" + k + ") value for " + elem.nodeName + ": " + v);
+        }
       });
     })) return this;
     
