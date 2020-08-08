@@ -2,6 +2,7 @@
 
 import Sandbox from '@nyariv/sandboxjs'
 import { ElementCollection as EC, wrap as elementWrap, EqEvent, wrapType, getStore, deleteStore, $document, DelegateObject, defaultDelegateObject } from './eQuery'
+import { sanitizeHTML } from './HTMLSanitizer';
 
 export const allowedGlobals = Sandbox.SAFE_GLOBALS;
 export const allowedPrototypes = Sandbox.SAFE_PROTOTYPES;
@@ -9,11 +10,13 @@ export const sandbox = new Sandbox(allowedGlobals, allowedPrototypes);
 
 const regVarName = /^\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*$/;
 const regKeyValName = /^\s*\(([a-zA-Z$_][a-zA-Z$_\d]*)\s*,\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*\)$/;
-const regForbiddenAttr = /^(on|:|@|x-)/;
-const regHrefJS = /^\s*javascript:/;
+
+function isIterable (object: any): object is Iterable<unknown> {
+  return object !== null && typeof object === 'object' && typeof object[Symbol.iterator] === 'function';
+}
 
 export function wrap(selector: wrapType, context?: ElementCollection|EC): ElementCollection {
-  return Object.assign(elementWrap(selector, context), Object.create(ElementCollection.prototype));
+  return new ElementCollection(...elementWrap(selector, context));
 }
 
 function walkFindSubs(elem: Node, up = false): subs {
@@ -31,30 +34,29 @@ function walkFindSubs(elem: Node, up = false): subs {
 }
 
 export class ElementCollection extends EC {
-  html(content?: wrapType) {
+  html(content?: string|Node|ElementCollection) {
     if (content === undefined) {
       return this.get(0)?.innerHTML;
     }
     let contentElem: Node;
+    if (content instanceof ElementCollection) {
+      content = content.detach();
+    }
     let elem = this.get(0);
     if (!elem) return this;
-    if (typeof content !== 'string') {
-      contentElem = wrap(content).detach();
+    contentElem = preprocessHTML(content);
+    let subsNested: subs = [];
+    const found = getStore<subs>(elem, 'childrenSubs', subsNested);
+    if (found !== subsNested) {
+      const subs: subs = getStore<subs>(elem, 'htmlSubs', []);
+      subs.push(subsNested);
     }
-    unsubNested(walkFindSubs(elem));
-    let subs: subs = [];
-    const found = getStore<subs>(elem, 'htmlSubs', subs);
-    if (found === subs) {
-      const parentSubs = walkFindSubs(elem, true);
-      parentSubs.push(subs);
-    } else {
-      subs = found;
-    }
-    const nestedSubs: subs = [];
-    subs.push(nestedSubs); // @TODO: potential memory leak of accumilating empty subs arrays
-    const processed = processHtml(typeof content !== 'string' ? contentElem : content, nestedSubs, defaultDelegateObject);
+    subsNested = found;
+    unsubNested(subsNested);
+    const processed = processHTML(contentElem, subsNested, defaultDelegateObject);
+    elem.innerHTML = '';
     elem.appendChild(processed.elem);
-    processed.run(getScopes(elem, {}, subs));
+    processed.run(getScopes(elem, {}, subsNested));
     return this;
   }
   text(set?: string) {
@@ -129,7 +131,8 @@ export default function init(elems?: wrapType, component?: string) {
       const comp = component || elem.getAttribute('x-app');
       const subs: subs = [];
       const scope = getStore<ElementScope>(elem, 'scope', components[comp] || getScope(elem, subs, {}, true));
-      const processed = processHtml(elem, subs, defaultDelegateObject);
+      preprocessHTML(elem);
+      const processed = processHTML(elem, subs, defaultDelegateObject);
       elem.setAttribute('x-processed', '');
       runs.push(() => processed.run([scope]));
     });
@@ -185,7 +188,7 @@ function watchRun(scopes: ElementScope[], code: string) {
   return () => run(getRootElement(scopes), 'return ' + code, scopes);
 }
 
-export function watch(toWatch: () => any, handler: (val: any, lastVal: any) => void|Promise<void>): subs {
+export function watch(toWatch: () => any, handler: (val: unknown, lastVal: unknown) => void|Promise<void>): subs {
   const watchGets: Map<any, Set<string>> = new Map();
   const subUnsubs: subs = [];
   let lastVal: any;
@@ -193,7 +196,6 @@ export function watch(toWatch: () => any, handler: (val: any, lastVal: any) => v
   let start = Date.now();
   let count = 0;
   const digest = () => {
-    unsubNested(subUnsubs);
     if ((Date.now() - start) > 1000) {
       count = 0;
       start = Date.now();
@@ -202,6 +204,7 @@ export function watch(toWatch: () => any, handler: (val: any, lastVal: any) => v
         throw new Error('Too many digests too quickly');
       }
     }
+    unsubNested(subUnsubs);
     let g = sandbox.subscribeGet((obj: any, name: string) => {
       const list = watchGets.get(obj) || new Set();
       list.add(name);
@@ -266,7 +269,7 @@ defineDirective('show', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
 
 defineDirective('text', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
   return watch(watchRun(scopes, exec.js), (val, lastVal) => {
-    wrap(exec.element).text(val);
+    wrap(exec.element).text(val + "");
   });
 });
 
@@ -296,9 +299,9 @@ defineDirective('model', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
   el.addEventListener(isInput ? 'input' : 'change', change);
   const subs = watch(watchRun(scopes, exec.js), (val, lastVal) => {
     if (isContentEditable) {
-      $el.html(val);
+      $el.html(val + "");
     } else {
-      $el.val(val);
+      $el.val(val as any);
     }
   });
   return [() => exec.element.removeEventListener(isInput ? 'input' : 'change', change), subs];
@@ -306,13 +309,9 @@ defineDirective('model', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
 
 defineDirective('html', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
   return watch(watchRun(scopes, exec.js), (val, lastVal) => {
-    exec.element.innerHTML = '';
-    const nestedSubs: subs = [];
-    exec.subs.push(nestedSubs);
-    unsubNested(walkFindSubs(exec.element));
-    const processed = processHtml(val, nestedSubs, defaultDelegateObject);
-    exec.element.appendChild(processed.elem);
-    processed.run(scopes);
+    if (val instanceof Node || typeof val === 'string' || val instanceof ElementCollection) {
+      wrap(exec.element).html(val);
+    }
   });
 });
 
@@ -338,18 +337,26 @@ function walkerInstance() {
   }
 }
 
-function processHtml(elem: Node|string, subs: subs, delegate: DelegateObject) {
-  let template: HTMLTemplateElement;
-  const exec = walkerInstance();
-  if (typeof elem === 'string') {
-    template = document.createElement('template');
-    template.innerHTML = elem;
-    walkTree(template.content, subs, exec.ready, delegate);
+function preprocessHTML(html: Node|string): Node {
+  let elem: DocumentFragment|Element;
+  if (typeof html === 'string') {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    elem = template.content;
+  } else if (html instanceof Element) {
+    elem = html;
   } else {
-    walkTree(elem, subs, exec.ready, delegate);
+    return html;
   }
+  sanitizeHTML(elem);
+  return elem;
+}
+
+function processHTML(elem: Node, subs: subs, delegate: DelegateObject) {
+  const exec = walkerInstance();
+  walkTree(elem, subs, exec.ready, delegate);
   return {
-    elem: typeof elem === 'string' ? template.content : elem,
+    elem: elem,
     run: exec.run
   }
 }
@@ -383,18 +390,15 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
     parentSubs.push(currentSubs);
   }
   if (element instanceof Element) {
-    if (["OBJECT", "EMBED"].includes(element.tagName)) {
-      element.remove();
-      return;
-    }
     pushSubs();
 
     const $element = wrap(element);
     element.removeAttribute('x-cloak');
     if (element.hasAttribute('x-if')) {
-      const html = element.outerHTML;
       const comment = document.createComment('x-if');
       let ifElem: Element;
+      const at = element.getAttribute('x-if');
+      element.removeAttribute('x-if');
       element.before(comment);
       element.remove();
       deleteStore(element, 'htmlSubs');
@@ -402,14 +406,11 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
         getStore<subs>(comment, 'htmlSubs', currentSubs);
         const nestedSubs: subs = [];
         currentSubs.push(nestedSubs)
-        currentSubs.push(watch(watchRun(scopes, element.getAttribute('x-if')), (val, lastVal) => {
+        currentSubs.push(watch(watchRun(scopes, at), (val, lastVal) => {
           if (val) {
             if (!ifElem) {
-              const template = document.createElement('template');
-              template.innerHTML = html;
-              ifElem = template.content.firstElementChild;
-              ifElem.removeAttribute('x-if');
-              const processed = processHtml(ifElem, nestedSubs, delegate);
+              ifElem = element.cloneNode(true) as Element;
+              const processed = processHTML(ifElem, nestedSubs, delegate);
               comment.after(processed.elem);
               processed.run([...scopes, getScope(ifElem, nestedSubs)]);
             }
@@ -433,6 +434,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
       const items = new Set<Element>();
       let exp: string;
       const at = element.getAttribute('x-for');
+      element.removeAttribute('x-for');
       let split = at.split(' in ');
       if (split.length < 2) {
         throw new Error('In valid x-for directive: ' + at)
@@ -458,6 +460,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
         const nestedSubs: subs = [];
         currentSubs.push(nestedSubs);
         currentSubs.push(watch(watchRun(scopes, exp), (val) => {
+          if (!isIterable(val)) return;
           unsubNested(nestedSubs);
           items.forEach((item) => {
             item.remove(); // @TODO: optimize
@@ -473,8 +476,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
             if (key) scope[key] = i;
             if (value) scope[value] = item;
             const elem = element.cloneNode(true) as Element;
-            elem.removeAttribute('x-for');
-            const processed = processHtml(elem, forSubs, del);
+            const processed = processHTML(elem, forSubs, del);
             comment.before(processed.elem);
             items.add(elem);
             runs.push(() => processed.run([...scopes, getScope(elem, forSubs, scope)]));
@@ -510,36 +512,12 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
       return;
     } else {
       for (let att of element.attributes) {
-        if (att.nodeName.startsWith('on')) {
-          element.setAttribute('@' + att.nodeName.slice(2), att.nodeValue);
-          element.removeAttribute(att.nodeName);
-        } else if (['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from'].includes(att.nodeName) && att.nodeValue !== 'javascript:void(0)') {
-          const isJs = att.nodeValue.match(regHrefJS);
-          if (isJs) {
-            if (att.nodeName === 'href' || att.nodeName === 'xlink:href') {
-              if (!element.hasAttribute('@click')) {
-                element.setAttribute('@click', att.nodeValue.substring(isJs[0].length));
-              }
-              element.setAttribute(att.nodeName, 'javascript:void(0)');
-            } else {
-              element.removeAttribute(att.nodeName);
-            }
-          }
-        } else if (att.nodeName === 'srcdoc' && element instanceof HTMLIFrameElement) {
-          const html = att.nodeValue;
-          element.removeAttribute(att.nodeName);
-          if (!element.hasAttribute(':srcdoc')) {
-            element.setAttribute(':srcdoc', html);
-          }
-        }
-      }
-      for (let att of element.attributes) {
         if (att.nodeName.startsWith(':')) {
           const at = att.nodeName.slice(1);
           ready((scopes) => {
             const nestedSubs: subs = [];
             currentSubs.push(nestedSubs);
-            currentSubs.push(watch(watchRun(scopes, att.nodeValue), (val, lastVal) => {
+            currentSubs.push(watch(watchRun(scopes, att.nodeValue), (val: any, lastVal) => {
               if (typeof val === 'object' && ['style', 'class'].includes(at)) {
                 if (at === 'class') {
                   $element.toggleClass(val);
@@ -550,14 +528,8 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
                     }
                   }
                 }
-              } else if (at === "srcdoc" && element instanceof HTMLIFrameElement) {
-                element.contentWindow.document.querySelector(':root')?.remove();
-                unsubNested(nestedSubs);
-                const processed = processHtml(val, nestedSubs, delegate);
-                element.contentWindow.document.appendChild(processed.elem);
-                processed.run([...scopes, getScope(element, currentSubs)]);
-              } else if (!at.match(regForbiddenAttr)) {
-                $element.attr(at, val);
+              } else {
+                $element.attr(at, val + "");
               }
             }));
             return scopes;
@@ -612,7 +584,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
           pushSubs();
           ready((scopes) => {
             currentSubs.push(watch(watchRun(scopes, s.slice(2, -2)), (val, lastVal) => {
-              placeholder.textContent = val;
+              placeholder.textContent = val + "";
             }));
             return scopes;
           });
