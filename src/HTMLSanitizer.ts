@@ -9,6 +9,7 @@ export const defaultHTMLWhiteList: (new () => Element)[] = [
   HTMLDialogElement,
   HTMLDivElement,
   HTMLFieldSetElement,
+  HTMLFormElement,
   HTMLHRElement,
   HTMLHeadingElement,
   HTMLLIElement,
@@ -100,8 +101,11 @@ sanitizeType([HTMLInputElement,
               'autocomplete',
               'cols',
               'rows',
+              'maxlength',
               'disabled',
-              'required'], (el: Element) => { return true;});
+              'required',
+              'accept',
+              'list'], (el: Element) => { return true;});
 sanitizeType([HTMLScriptElement], ['type'], (el: HTMLScriptElement) => {
   if (!el.type || el.type === 'text/javascript') {
     el.type = 'scopejs';
@@ -128,7 +132,7 @@ sanitizeType([HTMLPictureElement,
 
 const regHrefJS = /^\s*javascript:/i;
 const regValidSrc = /^((https?:)?\/\/|\/|#)/;
-const regSystemAtt = /^(:|@|x-)/;
+const regSystemAtt = /^(:|@|x\-)/;
 
 const srcAttributes = new Set(['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from']);
 

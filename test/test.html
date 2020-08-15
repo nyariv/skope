@@ -7,10 +7,12 @@
   <title>Scope.js Test</title>
   <style>
     [x-cloak] {display: none}
+    body {font-family: Arial, Helvetica, sans-serif;}
     .containers {display: flex}
     .containers > div {margin: 20px}
     .rating {width: 200px}
     [\@click] {cursor: pointer; user-select: none;}
+    label {margin: 0 0 20px 0; display: block;}
   </style>
 </head>
 <body x-app x-cloak>
@@ -30,13 +32,32 @@
       <script type="scopejs">
         let text = "type <i>here</i>";
       </script>
-      <textarea x-model="text" :value="text" :cols="40" :rows="10"></textarea>
+      <textarea x-model="text" :cols="40" :rows="10"></textarea>
       <div class="preview" x-html="text"></div>
     </div>
-    <div class="if">
-      <script>let on = true;</script>
-      <label>Check me <input type="checkbox" x-model="on"></label>
-      <div>{{on ? '★' : '☆'}} <span x-if="on">on</span></div>
+    <script>let values = {};</script>
+    <div class="form" x-ref="myForm">
+      <label>Checkbox <input type="checkbox" x-model="values.checkbox"></label>
+      <label>Radio 1 <input type="radio" value="radio1" x-model="values.radio"></label>
+      <label>Radio 2 <input type="radio" value="radio2" x-model="values.radio"></label>
+      <label>Radio 3 <input type="radio" value="radio3" x-model="values.radio"></label>
+      <label>Radio 4 <input type="radio" value="radio4" x-model="values.radio"></label>
+      <label>Select
+        <select x-model="values.select">
+          <option :value="'option' + x" x-for="x in [1,2,3,4,5]">Option {{x}}</option>
+        </select>
+      </label> 
+      <label>Multi Select
+        <select x-model="values.multiSelect" multiple>
+          <option :value="'option' + x" x-for="x in [1,2,3,4,5]">Option {{x}}</option>
+        </select>
+      </label> 
+      <label x-for="type in ['color', 'date', 'datetime-local', 'email', 'file', 'month', 'number', 'password', 'range', 'tel', 'text', 'time', 'url', 'week'">
+        Input {{type}} <input x-model="values[type]" :name="type" :type="type">
+      </label> 
+    </div>
+    <div>
+      <pre x-text="JSON.stringify(values, '', '  '"></pre>
     </div>
   </div>
   <script type="module">

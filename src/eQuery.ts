@@ -405,7 +405,7 @@ export class ElementCollection {
         if (santizeAttribute(elem, k, v + "")) {
           elem.setAttribute(k, v + "");
         } else {
-          throw new Error("Illegal attribute (" + k + ") value for " + elem.nodeName + ": " + v);
+          throw new Error("Illegal attribute [" + k + "] value for <" + elem.nodeName.toLowerCase() + ">: " + v);
         }
       });
     })) return this;
@@ -426,7 +426,7 @@ export class ElementCollection {
   /**
    * Element.value
    */
-  val(set?: boolean|string|number|string[]): string|number|string[]|boolean|this {
+  val(set?: boolean|string|number|string[]): string|number|string[]|boolean|FileList {
     if (typeof set !== 'undefined') {
       this.forEach((elem: HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement) => {
         if (elem instanceof HTMLInputElement) {
@@ -436,7 +436,7 @@ export class ElementCollection {
             } else {
               elem.removeAttribute('checked');
             }
-          } else {
+          } else if (elem.type !== 'file' || !set) {
             elem.value = set + "";
           }
         } else if (elem instanceof HTMLSelectElement) {
@@ -454,26 +454,69 @@ export class ElementCollection {
           new ElementCollection(elem).trigger('change');
         }
       })
-      return this;
+      return set;
     }
     const elem = arr(this)[0];
     if (!elem) return;
     if (elem instanceof HTMLInputElement) {
-      if (elem.type === "checkbox" || elem.type === "radio") {
+      if (elem.type === "checkbox") {
         return elem.checked;
       }
-      if (elem.type == "number") {
+      if(elem.type === "radio") {
+        if (elem.checked) {
+          return elem.value;
+        }
+        return undefined;
+      }
+      if (elem.type === "number" || elem.type === "range") {
         return +elem.value;
+      }
+      if (elem.type === "file") {
+        return elem.files;
       }
       return elem.value
     } else if (elem instanceof HTMLSelectElement) {
       const res = [...elem.options].filter((opt) => {
         return opt.selected;
       }).map((opt) => opt.value);
-      if (elem.multiple) return res;
+      if (elem.multiple) {
+        const ret = getStore<string[]>(elem, 'multiSelect', []);
+        ret.length = 0;
+        ret.push(...res);
+        return ret;
+      }
       return res.pop();
     }
     return (<HTMLTextAreaElement>elem)?.value;
+  }
+
+  vals(set?: {[name: string]: boolean|string|number|string[]}): {[name: string]: boolean|string|number|string[]|FileList} {
+    const $elems = wrap([this.filter('input[name], select[name], textarea[name]'), this.find('input[name], select[name], textarea[name]')]);
+    let res: {[name: string]: boolean|string|number|string[]|FileList} = {}
+    if (set === undefined) {
+      $elems.forEach((elem: HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement) => {
+        if (!elem.name) return;
+        if (elem instanceof HTMLInputElement && elem.type === 'radio') {
+          res[elem.name] = res[elem.name];
+          if (elem.checked) {
+            res[elem.name] = elem.value;
+          }
+        } else {
+          res[elem.name] = wrap(elem).val();
+        }
+      });
+    } else {
+      $elems.forEach((elem: HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement) => {
+        if (set[elem.name] === undefined) return;
+        res[elem.name] == set[elem.name];
+        if (elem instanceof HTMLInputElement && elem.type === 'radio') {
+          elem.checked = set[elem.name] === elem.value;
+        } else {
+          wrap(elem).val(set[elem.name]);
+        }
+      });
+    }
+    return res;
   }
 
   /**

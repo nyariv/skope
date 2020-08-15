@@ -1,7 +1,7 @@
 // @ts-check
 
 import Sandbox from '@nyariv/sandboxjs'
-import { ElementCollection as EC, wrap as elementWrap, EqEvent, wrapType, getStore, deleteStore, $document, DelegateObject, defaultDelegateObject } from './eQuery'
+import { ElementCollection, wrap, EqEvent, wrapType, getStore, deleteStore, $document, DelegateObject, defaultDelegateObject } from './eQuery'
 import { sanitizeHTML } from './HTMLSanitizer';
 
 export const allowedGlobals = Sandbox.SAFE_GLOBALS;
@@ -15,9 +15,10 @@ function isIterable (object: any): object is Iterable<unknown> {
   return object !== null && typeof object === 'object' && typeof object[Symbol.iterator] === 'function';
 }
 
-export function wrap(selector: wrapType, context?: ElementCollection|EC): ElementCollection {
-  return new ElementCollection(...elementWrap(selector, context));
+function isObject (object: any): object is {[key: string]: unknown} {
+  return object !== null && typeof object === 'object';
 }
+
 
 function walkFindSubs(elem: Node, up = false): subs {
   if (!elem) return [];
@@ -33,54 +34,61 @@ function walkFindSubs(elem: Node, up = false): subs {
   return subs;
 }
 
-export class ElementCollection extends EC {
-  html(content?: string|Node|ElementCollection) {
-    if (content === undefined) {
-      return this.get(0)?.innerHTML;
-    }
-    let contentElem: Node;
-    if (content instanceof ElementCollection) {
-      content = content.detach();
-    }
-    let elem = this.get(0);
-    if (!elem) return this;
-    contentElem = preprocessHTML(content);
-    let subsNested: subs = [];
-    const found = getStore<subs>(elem, 'childrenSubs', subsNested);
-    if (found !== subsNested) {
-      const subs: subs = getStore<subs>(elem, 'htmlSubs', []);
-      subs.push(subsNested);
-    }
-    subsNested = found;
-    unsubNested(subsNested);
-    const processed = processHTML(contentElem, subsNested, defaultDelegateObject);
-    elem.innerHTML = '';
-    elem.appendChild(processed.elem);
-    processed.run(getScopes(elem, {}, subsNested));
-    return this;
-  }
-  text(set?: string) {
-    if (set !== undefined) {
-      this.forEach((elem) => {
-        unsubNested(walkFindSubs(elem));
-        elem.textContent = set;
-      });
-      return this;
-    }
-    return this.get(0)?.textContent.trim();
-  }
-  detach() {
-    const contentElem = document.createElement('template');
-    for (let elem of this) {
-      unsubNested(getStore<subs>(elem, 'htmlSubs'));
-      contentElem.appendChild(elem);
-    };
-    return contentElem.content;
+declare module './eQuery' {
+  interface ElementCollection {
+    html(content?: string|Node|ElementCollection): this;
+    text(set?: string): string|this;
+    detach(): DocumentFragment;
   }
 }
 
-allowedPrototypes.set(EC, new Set());
+ElementCollection.prototype.html = function (content?: string|Node|ElementCollection) {
+  if (content === undefined) {
+    return this.get(0)?.innerHTML;
+  }
+  let contentElem: Node;
+  if (content instanceof ElementCollection) {
+    content = content.detach();
+  }
+  let elem = this.get(0);
+  if (!elem) return this;
+  contentElem = preprocessHTML(content);
+  let subsNested: subs = [];
+  const found = getStore<subs>(elem, 'childrenSubs', subsNested);
+  if (found !== subsNested) {
+    const subs: subs = getStore<subs>(elem, 'htmlSubs', []);
+    subs.push(subsNested);
+  }
+  subsNested = found;
+  unsubNested(subsNested);
+  const processed = processHTML(contentElem, subsNested, defaultDelegateObject);
+  elem.innerHTML = '';
+  elem.appendChild(processed.elem);
+  processed.run(getScopes(elem, {}, subsNested));
+  return this;
+};
+ElementCollection.prototype.text = function (set?: string) {
+  if (set !== undefined) {
+    this.forEach((elem: Element) => {
+      unsubNested(walkFindSubs(elem));
+      elem.textContent = set;
+    });
+    return this;
+  }
+  return this.get(0)?.textContent.trim();
+};
+ElementCollection.prototype.detach = function () {
+  const contentElem = document.createElement('template');
+  for (let elem of this) {
+    unsubNested(getStore<subs>(elem, 'htmlSubs'));
+    contentElem.appendChild(elem);
+  };
+  return contentElem.content;
+};
+
 allowedPrototypes.set(ElementCollection, new Set());
+allowedPrototypes.set(FileList, new Set());
+allowedPrototypes.set(File, new Set());
 
 const $watch = (cb: () => any, callback: (val: any, lastVal: any) => void): {unsubscribe: () => void} => {
   const subUnsubs = watch(cb, callback);
@@ -103,7 +111,7 @@ function getRootElement(scopes: ElementScope[]): Element {
 }
 
 class RootScope extends ElementScope {
-  $refs = {};
+  $refs: {[name: string]: ElementCollection} = {};
   $wrap = (element: wrapType) => {
     return wrap(element, this.$el);
   }
@@ -196,11 +204,11 @@ export function watch(toWatch: () => any, handler: (val: unknown, lastVal: unkno
   let start = Date.now();
   let count = 0;
   const digest = () => {
-    if ((Date.now() - start) > 1000) {
+    if ((Date.now() - start) > 4000) {
       count = 0;
       start = Date.now();
     } else {
-      if (count++ > 50) {
+      if (count++ > 200) {
         throw new Error('Too many digests too quickly');
       }
     }
@@ -278,9 +286,9 @@ defineDirective('ref', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
     throw new Error('Invalid ref name: ' + exec.js);
   }
   const name = getScope(exec.element, [], {name: exec.js.trim()});
-  run(document, `$refs[name] = $el`, [...scopes, name]);
+  run(document, `$refs[name] = $wrap([...($refs[name] || []), $el])`, [...scopes, name]);
   return [() => {
-    run(document, `delete $refs[name]`, [...scopes, name]);
+    run(document, `$refs[name] = $refs[name].not($el)`, [...scopes, name]);
   }];
 });
 
@@ -292,12 +300,15 @@ defineDirective('model', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
                   || isContentEditable;
   const $el = wrap(el);
   let last: any;
+  if (!el.hasAttribute('name')) {
+    el.setAttribute('name', exec.js.trim());
+  }
   const change = () => {
     last = !isContentEditable ? $el.val() : $el.html();
-    run(getRootElement(scopes), exec.js + ' = $$value', [...scopes, getScope(el, exec.subs, {$$value: last})]);
+    run(getRootElement(scopes), exec.js.trim() + ' = $$value === undefined ? ' + exec.js.trim() + ' : $$value', [...scopes, getScope(el, exec.subs, {$$value: last})]);
   }
   el.addEventListener(isInput ? 'input' : 'change', change);
-  const subs = watch(watchRun(scopes, exec.js), (val, lastVal) => {
+  const subs = watch(watchRun(scopes, exec.js.trim()), (val, lastVal) => {
     if (isContentEditable) {
       $el.html(val + "");
     } else {
@@ -460,16 +471,13 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
         const nestedSubs: subs = [];
         currentSubs.push(nestedSubs);
         currentSubs.push(watch(watchRun(scopes, exp), (val) => {
-          if (!isIterable(val)) return;
           unsubNested(nestedSubs);
           items.forEach((item) => {
             item.remove(); // @TODO: optimize
           });
           items.clear();
           const runs: (() => void)[] = [];
-          let i = -1;
-          for (let item of val) {
-            i++;
+          const repeat = (item: unknown, i: number|string) => {
             const forSubs: subs = [];
             nestedSubs.push(forSubs);
             const scope: any = {$index: i};
@@ -480,6 +488,17 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
             comment.before(processed.elem);
             items.add(elem);
             runs.push(() => processed.run([...scopes, getScope(elem, forSubs, scope)]));
+          }
+          let i = -1;
+          if (isIterable(val)) {
+            for (let item of val) {
+              i++;
+              repeat(item, i);
+            }
+          } else if (isObject(val)) {
+            for (let i in val) {
+              repeat(val[i], i);
+            }
           }
           runs.forEach((run) => run());
         }));
