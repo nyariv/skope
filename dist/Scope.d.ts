@@ -1,13 +1,14 @@
 import Sandbox from '@nyariv/sandboxjs';
-import { ElementCollection as EC, wrapType } from './eQuery';
+import { ElementCollection, wrapType } from './eQuery';
 export declare const allowedGlobals: import("@nyariv/sandboxjs").IGlobals;
 export declare const allowedPrototypes: Map<any, Set<string>>;
 export declare const sandbox: Sandbox;
-export declare function wrap(selector: wrapType, context?: ElementCollection | EC): ElementCollection;
-export declare class ElementCollection extends EC {
-    html(content?: string | Node | ElementCollection): string | this;
-    text(set?: string): string | this;
-    detach(): DocumentFragment;
+declare module './eQuery' {
+    interface ElementCollection {
+        html(content?: string | Node | ElementCollection): this;
+        text(set?: string): string | this;
+        detach(): DocumentFragment;
+    }
 }
 declare class ElementScope {
     $el: ElementCollection;

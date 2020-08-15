@@ -47,8 +47,12 @@ export declare class ElementCollection {
         [attr: string]: string | number;
     }, set?: string | number): string | this;
     removeAttr(key: string): this;
-    val(set?: boolean | string | number | string[]): string | number | string[] | boolean | this;
-    text(set?: string): any;
+    val(set?: boolean | string | number | string[]): string | number | string[] | boolean | FileList;
+    vals(set?: {
+        [name: string]: boolean | string | number | string[];
+    }): {
+        [name: string]: boolean | string | number | string[] | FileList;
+    };
     scrollTop(set?: number): any;
     scrollLeft(set?: number): any;
     label(set?: string): string | this;

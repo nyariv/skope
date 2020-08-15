@@ -267,7 +267,6 @@ let expectTypes = {
   },
   expEdge: {
     types: {
-      arrayProp: /^[\[]/,
       call: /^[\(]/
     },
     next: ['splitter', 'op', 'expEdge', 'if', 'dot', 'expEnd']
@@ -293,6 +292,7 @@ let expectTypes = {
   },
   dot: {
     types: {
+      arrayProp: /^[\[]/,
       dot: /^\.(?!\.)/
     },
     next: ['splitter', 'incrementerAfter', 'assignment', 'op', 'expEdge', 'if', 'dot', 'expEnd']
@@ -420,6 +420,8 @@ const restOfExp = (part, tests, quote) => {
 restOfExp.next = ['splitter', 'op', 'expEnd', 'if'];
 
 function assignCheck(obj, context, op = 'assign') {
+  var _a, _b, _c, _d;
+
   if (obj.context === undefined) {
     throw new ReferenceError(`Cannot ${op} value to undefined.`);
   }
@@ -440,11 +442,26 @@ function assignCheck(obj, context, op = 'assign') {
     throw new SandboxError(`Override prototype property '${obj.prop}' not allowed`);
   }
 
-  var _a, _b;
-
-  (_b = (_a = context.setSubscriptions.get(obj.context)) === null || _a === void 0 ? void 0 : _a.get(obj.prop)) === null || _b === void 0 ? void 0 : _b.forEach(cb => cb());
+  if (op === "delete") {
+    if (obj.context.hasOwnProperty(obj.prop)) {
+      (_a = context.changeSubscriptions.get(obj.context)) === null || _a === void 0 ? void 0 : _a.forEach(cb => cb({
+        type: "delete",
+        prop: obj.prop
+      }));
+    }
+  } else if (obj.context.hasOwnProperty(obj.prop)) {
+    (_c = (_b = context.setSubscriptions.get(obj.context)) === null || _b === void 0 ? void 0 : _b.get(obj.prop)) === null || _c === void 0 ? void 0 : _c.forEach(cb => cb({
+      type: "replace"
+    }));
+  } else {
+    (_d = context.changeSubscriptions.get(obj.context)) === null || _d === void 0 ? void 0 : _d.forEach(cb => cb({
+      type: "create",
+      prop: obj.prop
+    }));
+  }
 }
 
+const arrayChange = new Set([[].push, [].pop, [].shift, [].unshift, [].splice, [].reverse, [].sort, [].copyWithin]);
 let ops2 = {
   'prop': (a, b, obj, context, scope) => {
     if (a === null) {
@@ -557,6 +574,8 @@ let ops2 = {
     return new Prop(a, b, false, g);
   },
   'call': (a, b, obj, context, scope) => {
+    var _a;
+
     if (context.options.forbidMethodCalls) throw new SandboxError("Method calls are not allowed");
 
     if (typeof a !== 'function') {
@@ -573,6 +592,85 @@ let ops2 = {
 
     if (typeof obj === 'function') {
       return obj(...args.map(item => exec(item, scope, context)));
+    }
+
+    const vals = args.map(item => exec(item, scope, context));
+
+    if (obj.context[obj.prop] === JSON.stringify && context.getSubscriptions.size) {
+      const cache = new Set();
+
+      const recurse = x => {
+        if (!x || !(typeof x === 'object') || cache.has(x)) return;
+        cache.add(x);
+
+        for (let y in x) {
+          context.getSubscriptions.forEach(cb => cb(x, y));
+          recurse(x[y]);
+        }
+      };
+
+      recurse(vals[0]);
+    }
+
+    if (obj.context instanceof Array && arrayChange.has(obj.context[obj.prop]) && context.changeSubscriptions.get(obj.context)) {
+      let change;
+      let changed = false;
+
+      if (obj.prop === "push") {
+        change = {
+          type: "push",
+          added: vals
+        };
+        changed = !!vals.length;
+      } else if (obj.prop === "pop") {
+        change = {
+          type: "pop",
+          removed: obj.context.slice(-1)
+        };
+        changed = !!change.removed.length;
+      } else if (obj.prop === "shift") {
+        change = {
+          type: "shift",
+          removed: obj.context.slice(0, 1)
+        };
+        changed = !!change.removed.length;
+      } else if (obj.prop === "unshift") {
+        change = {
+          type: "unshift",
+          added: vals
+        };
+        changed = !!vals.length;
+      } else if (obj.prop === "splice") {
+        change = {
+          type: "splice",
+          startIndex: vals[0],
+          deleteCount: vals[1] === undefined ? obj.context.length : vals[1],
+          added: vals.slice(2),
+          removed: obj.context.slice(vals[0], vals[1] === undefined ? undefined : vals[0] + vals[1])
+        };
+        changed = !!change.added.length || !!change.removed.length;
+      } else if (obj.prop === "reverse" || obj.prop === "sort") {
+        change = {
+          type: obj.prop
+        };
+        changed = !!obj.context.length;
+      } else if (obj.prop === "copyWithin") {
+        let len = vals[2] === undefined ? obj.context.length - vals[1] : Math.min(obj.context.length, vals[2] - vals[1]);
+        change = {
+          type: "copyWithin",
+          startIndex: vals[0],
+          endIndex: vals[0] + len,
+          added: obj.context.slice(vals[1], vals[1] + len),
+          removed: obj.context.slice(vals[0], vals[0] + len)
+        };
+        changed = !!change.added.length || !!change.removed.length;
+      }
+
+      if (changed) {
+        (_a = context.changeSubscriptions.get(obj.context)) === null || _a === void 0 ? void 0 : _a.forEach(cb => cb(change));
+      }
+
+      return obj.context[obj.prop](...vals);
     }
 
     return obj.context[obj.prop](...args.map(item => exec(item, scope, context)));
@@ -1092,7 +1190,8 @@ class Sandbox {
       sandboxGlobal,
       evals: new Map(),
       getSubscriptions: new Set(),
-      setSubscriptions: new WeakMap()
+      setSubscriptions: new WeakMap(),
+      changeSubscriptions: new WeakMap()
     };
     const func = sandboxFunction(this.context);
     this.context.evals.set(Function, func);
@@ -1178,8 +1277,19 @@ class Sandbox {
     const callbacks = names.get(name) || new Set();
     names.set(name, callbacks);
     callbacks.add(callback);
+    let changeCbs;
+
+    if (obj && obj[name] && typeof obj[name] === "object") {
+      changeCbs = this.context.changeSubscriptions.get(obj[name]) || new Set();
+      changeCbs.add(callback);
+      this.context.changeSubscriptions.set(obj[name], changeCbs);
+    }
+
     return {
-      unsubscribe: () => callbacks.delete(callback)
+      unsubscribe: () => {
+        callbacks.delete(callback);
+        if (changeCbs) changeCbs.delete(callback);
+      }
     };
   }
 
@@ -1389,7 +1499,7 @@ class Sandbox {
 
 }
 
-var defaultHTMLWhiteList = [HTMLBRElement, HTMLBodyElement, HTMLDListElement, HTMLDataElement, HTMLDataListElement, HTMLDialogElement, HTMLDivElement, HTMLFieldSetElement, HTMLHRElement, HTMLHeadingElement, HTMLLIElement, HTMLLegendElement, HTMLMapElement, HTMLMetaElement, HTMLMeterElement, HTMLModElement, HTMLOListElement, HTMLOutputElement, HTMLParagraphElement, HTMLPreElement, HTMLProgressElement, HTMLQuoteElement, HTMLSpanElement, HTMLTableCaptionElement, HTMLTableCellElement, HTMLTableColElement, HTMLTableElement, HTMLTableSectionElement, HTMLTableRowElement, HTMLTimeElement, HTMLTitleElement, HTMLUListElement, HTMLUnknownElement, HTMLTemplateElement, HTMLCanvasElement, HTMLElement];
+var defaultHTMLWhiteList = [HTMLBRElement, HTMLBodyElement, HTMLDListElement, HTMLDataElement, HTMLDataListElement, HTMLDialogElement, HTMLDivElement, HTMLFieldSetElement, HTMLFormElement, HTMLHRElement, HTMLHeadingElement, HTMLLIElement, HTMLLegendElement, HTMLMapElement, HTMLMetaElement, HTMLMeterElement, HTMLModElement, HTMLOListElement, HTMLOutputElement, HTMLParagraphElement, HTMLPreElement, HTMLProgressElement, HTMLQuoteElement, HTMLSpanElement, HTMLTableCaptionElement, HTMLTableCellElement, HTMLTableColElement, HTMLTableElement, HTMLTableSectionElement, HTMLTableRowElement, HTMLTimeElement, HTMLTitleElement, HTMLUListElement, HTMLUnknownElement, HTMLTemplateElement, HTMLCanvasElement, HTMLElement];
 var globalAllowedAtttributes = new Set(['id', 'class', 'style', 'alt', 'role', 'aria-label', 'aria-labelledby', 'aria-hidden', 'tabindex', 'title', 'dir', 'lang', 'height', 'width']);
 var types = new Map();
 
@@ -1416,7 +1526,7 @@ sanitizeType([], ['href'], el => {
 sanitizeType([HTMLButtonElement], ['type'], el => {
   return true;
 });
-sanitizeType([HTMLInputElement, HTMLSelectElement, HTMLOptGroupElement, HTMLOptionElement, HTMLLabelElement, HTMLTextAreaElement], ['value', 'type', 'checked', 'selected', 'name', 'for', 'max', 'min', 'placeholder', 'readonly', 'size', 'multiple', 'step', 'autocomplete', 'cols', 'rows', 'disabled', 'required'], el => {
+sanitizeType([HTMLInputElement, HTMLSelectElement, HTMLOptGroupElement, HTMLOptionElement, HTMLLabelElement, HTMLTextAreaElement], ['value', 'type', 'checked', 'selected', 'name', 'for', 'max', 'min', 'placeholder', 'readonly', 'size', 'multiple', 'step', 'autocomplete', 'cols', 'rows', 'maxlength', 'disabled', 'required', 'accept', 'list'], el => {
   return true;
 });
 sanitizeType([HTMLScriptElement], ['type'], el => {
@@ -1434,7 +1544,7 @@ sanitizeType([HTMLPictureElement, HTMLImageElement, HTMLAudioElement, HTMLTrackE
 });
 var regHrefJS = /^\s*javascript:/i;
 var regValidSrc = /^((https?:)?\/\/|\/|#)/;
-var regSystemAtt = /^(:|@|x-)/;
+var regSystemAtt = /^(:|@|x\-)/;
 var srcAttributes = new Set(['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from']);
 function santizeAttribute(element, attName, attValue) {
   var preprocess = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
@@ -1858,7 +1968,7 @@ class ElementCollection {
         if (santizeAttribute(elem, k, v + "")) {
           elem.setAttribute(k, v + "");
         } else {
-          throw new Error("Illegal attribute (" + k + ") value for " + elem.nodeName + ": " + v);
+          throw new Error("Illegal attribute [" + k + "] value for <" + elem.nodeName.toLowerCase() + ">: " + v);
         }
       });
     })) return this;
@@ -1882,7 +1992,7 @@ class ElementCollection {
             } else {
               elem.removeAttribute('checked');
             }
-          } else {
+          } else if (elem.type !== 'file' || !set) {
             elem.value = set + "";
           }
         } else if (elem instanceof HTMLSelectElement) {
@@ -1900,19 +2010,31 @@ class ElementCollection {
           new ElementCollection(elem).trigger('change');
         }
       });
-      return this;
+      return set;
     }
 
     var elem = arr(this)[0];
     if (!elem) return;
 
     if (elem instanceof HTMLInputElement) {
-      if (elem.type === "checkbox" || elem.type === "radio") {
+      if (elem.type === "checkbox") {
         return elem.checked;
       }
 
-      if (elem.type == "number") {
+      if (elem.type === "radio") {
+        if (elem.checked) {
+          return elem.value;
+        }
+
+        return undefined;
+      }
+
+      if (elem.type === "number" || elem.type === "range") {
         return +elem.value;
+      }
+
+      if (elem.type === "file") {
+        return elem.files;
       }
 
       return elem.value;
@@ -1920,11 +2042,52 @@ class ElementCollection {
       var res = [...elem.options].filter(opt => {
         return opt.selected;
       }).map(opt => opt.value);
-      if (elem.multiple) return res;
+
+      if (elem.multiple) {
+        var ret = getStore(elem, 'multiSelect', []);
+        ret.length = 0;
+        ret.push(...res);
+        return ret;
+      }
+
       return res.pop();
     }
 
     return elem === null || elem === void 0 ? void 0 : elem.value;
+  }
+
+  vals(set) {
+    var $elems = wrap([this.filter('input[name], select[name], textarea[name]'), this.find('input[name], select[name], textarea[name]')]);
+    var res = {};
+
+    if (set === undefined) {
+      $elems.forEach(elem => {
+        if (!elem.name) return;
+
+        if (elem instanceof HTMLInputElement && elem.type === 'radio') {
+          res[elem.name] = res[elem.name];
+
+          if (elem.checked) {
+            res[elem.name] = elem.value;
+          }
+        } else {
+          res[elem.name] = wrap(elem).val();
+        }
+      });
+    } else {
+      $elems.forEach(elem => {
+        if (set[elem.name] === undefined) return;
+        res[elem.name] == set[elem.name];
+
+        if (elem instanceof HTMLInputElement && elem.type === 'radio') {
+          elem.checked = set[elem.name] === elem.value;
+        } else {
+          wrap(elem).val(set[elem.name]);
+        }
+      });
+    }
+
+    return res;
   }
 
   text(set) {
@@ -2398,8 +2561,8 @@ function isIterable(object) {
   return object !== null && typeof object === 'object' && typeof object[Symbol.iterator] === 'function';
 }
 
-function wrap$1(selector, context) {
-  return new ElementCollection$1(...wrap(selector, context));
+function isObject(object) {
+  return object !== null && typeof object === 'object';
 }
 
 function walkFindSubs(elem) {
@@ -2420,67 +2583,66 @@ function walkFindSubs(elem) {
   return subs;
 }
 
-class ElementCollection$1 extends ElementCollection {
-  html(content) {
-    if (content === undefined) {
-      var _this$get;
+ElementCollection.prototype.html = function (content) {
+  if (content === undefined) {
+    var _this$get;
 
-      return (_this$get = this.get(0)) === null || _this$get === void 0 ? void 0 : _this$get.innerHTML;
-    }
+    return (_this$get = this.get(0)) === null || _this$get === void 0 ? void 0 : _this$get.innerHTML;
+  }
 
-    var contentElem;
+  var contentElem;
 
-    if (content instanceof ElementCollection$1) {
-      content = content.detach();
-    }
+  if (content instanceof ElementCollection) {
+    content = content.detach();
+  }
 
-    var elem = this.get(0);
-    if (!elem) return this;
-    contentElem = preprocessHTML(content);
-    var subsNested = [];
-    var found = getStore(elem, 'childrenSubs', subsNested);
+  var elem = this.get(0);
+  if (!elem) return this;
+  contentElem = preprocessHTML(content);
+  var subsNested = [];
+  var found = getStore(elem, 'childrenSubs', subsNested);
 
-    if (found !== subsNested) {
-      var subs = getStore(elem, 'htmlSubs', []);
-      subs.push(subsNested);
-    }
+  if (found !== subsNested) {
+    var subs = getStore(elem, 'htmlSubs', []);
+    subs.push(subsNested);
+  }
 
-    subsNested = found;
-    unsubNested(subsNested);
-    var processed = processHTML(contentElem, subsNested, defaultDelegateObject);
-    elem.innerHTML = '';
-    elem.appendChild(processed.elem);
-    processed.run(getScopes(elem, {}, subsNested));
+  subsNested = found;
+  unsubNested(subsNested);
+  var processed = processHTML(contentElem, subsNested, defaultDelegateObject);
+  elem.innerHTML = '';
+  elem.appendChild(processed.elem);
+  processed.run(getScopes(elem, {}, subsNested));
+  return this;
+};
+
+ElementCollection.prototype.text = function (set) {
+  var _this$get2;
+
+  if (set !== undefined) {
+    this.forEach(elem => {
+      unsubNested(walkFindSubs(elem));
+      elem.textContent = set;
+    });
     return this;
   }
 
-  text(set) {
-    var _this$get2;
+  return (_this$get2 = this.get(0)) === null || _this$get2 === void 0 ? void 0 : _this$get2.textContent.trim();
+};
 
-    if (set !== undefined) {
-      this.forEach(elem => {
-        unsubNested(walkFindSubs(elem));
-        elem.textContent = set;
-      });
-      return this;
-    }
+ElementCollection.prototype.detach = function () {
+  var contentElem = document.createElement('template');
 
-    return (_this$get2 = this.get(0)) === null || _this$get2 === void 0 ? void 0 : _this$get2.textContent.trim();
+  for (var elem of this) {
+    unsubNested(getStore(elem, 'htmlSubs'));
+    contentElem.appendChild(elem);
   }
+  return contentElem.content;
+};
 
-  detach() {
-    var contentElem = document.createElement('template');
-
-    for (var elem of this) {
-      unsubNested(getStore(elem, 'htmlSubs'));
-      contentElem.appendChild(elem);
-    }
-    return contentElem.content;
-  }
-
-}
 allowedPrototypes.set(ElementCollection, new Set());
-allowedPrototypes.set(ElementCollection$1, new Set());
+allowedPrototypes.set(FileList, new Set());
+allowedPrototypes.set(File, new Set());
 
 var $watch = (cb, callback) => {
   var subUnsubs = watch(cb, callback);
@@ -2491,7 +2653,7 @@ var $watch = (cb, callback) => {
 
 class ElementScope {
   constructor(element) {
-    this.$el = wrap$1(element);
+    this.$el = wrap(element);
   }
 
   $dispatch(eventType, detail) {
@@ -2514,7 +2676,7 @@ class RootScope extends ElementScope {
     this.$refs = {};
 
     this.$wrap = element => {
-      return wrap$1(element, this.$el);
+      return wrap(element, this.$el);
     };
 
     this.$watch = $watch;
@@ -2535,7 +2697,7 @@ function defineComponent(name, comp) {
 }
 function init(elems, component) {
   var runs = [];
-  (elems ? wrap$1(elems, $document) : $document.find('[x-app]').not('[x-app] [x-app]')).once('x-processed').forEach(elem => {
+  (elems ? wrap(elems, $document) : $document.find('[x-app]').not('[x-app] [x-app]')).once('x-processed').forEach(elem => {
     var comp = component || elem.getAttribute('x-app');
     var subs = [];
     var scope = getStore(elem, 'scope', components[comp] || getScope(elem, subs, {}, true));
@@ -2609,11 +2771,11 @@ function watch(toWatch, handler) {
   var count = 0;
 
   var digest = () => {
-    if (Date.now() - start > 1000) {
+    if (Date.now() - start > 4000) {
       count = 0;
       start = Date.now();
     } else {
-      if (count++ > 50) {
+      if (count++ > 200) {
         throw new Error('Too many digests too quickly');
       }
     }
@@ -2686,7 +2848,7 @@ defineDirective('text', function (exec) {
   }
 
   return watch(watchRun(scopes, exec.js), (val, lastVal) => {
-    wrap$1(exec.element).text(val + "");
+    wrap(exec.element).text(val + "");
   });
 });
 defineDirective('ref', function (exec) {
@@ -2701,9 +2863,9 @@ defineDirective('ref', function (exec) {
   var name = getScope(exec.element, [], {
     name: exec.js.trim()
   });
-  run(document, "$refs[name] = $el", [...scopes, name]);
+  run(document, "$refs[name] = $wrap([...($refs[name] || []), $el])", [...scopes, name]);
   return [() => {
-    run(document, "delete $refs[name]", [...scopes, name]);
+    run(document, "$refs[name] = $refs[name].not($el)", [...scopes, name]);
   }];
 });
 defineDirective('model', function (exec) {
@@ -2714,18 +2876,22 @@ defineDirective('model', function (exec) {
   var el = exec.element;
   var isContentEditable = el instanceof HTMLElement && (el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === '');
   var isInput = el instanceof HTMLInputElement && (!el.type || el.type === 'text' || el.type === 'tel') || el instanceof HTMLTextAreaElement || isContentEditable;
-  var $el = wrap$1(el);
+  var $el = wrap(el);
   var last;
+
+  if (!el.hasAttribute('name')) {
+    el.setAttribute('name', exec.js.trim());
+  }
 
   var change = () => {
     last = !isContentEditable ? $el.val() : $el.html();
-    run(getRootElement(scopes), exec.js + ' = $$value', [...scopes, getScope(el, exec.subs, {
+    run(getRootElement(scopes), exec.js.trim() + ' = $$value === undefined ? ' + exec.js.trim() + ' : $$value', [...scopes, getScope(el, exec.subs, {
       $$value: last
     })]);
   };
 
   el.addEventListener(isInput ? 'input' : 'change', change);
-  var subs = watch(watchRun(scopes, exec.js), (val, lastVal) => {
+  var subs = watch(watchRun(scopes, exec.js.trim()), (val, lastVal) => {
     if (isContentEditable) {
       $el.html(val + "");
     } else {
@@ -2740,8 +2906,8 @@ defineDirective('html', function (exec) {
   }
 
   return watch(watchRun(scopes, exec.js), (val, lastVal) => {
-    if (val instanceof Node || typeof val === 'string' || val instanceof ElementCollection$1) {
-      wrap$1(exec.element).html(val);
+    if (val instanceof Node || typeof val === 'string' || val instanceof ElementCollection) {
+      wrap(exec.element).html(val);
     }
   });
 });
@@ -2831,7 +2997,7 @@ function walkTree(element, parentSubs, ready, delegate) {
   if (element instanceof Element) {
     var _ret = function () {
       pushSubs();
-      var $element = wrap$1(element);
+      var $element = wrap(element);
       element.removeAttribute('x-cloak');
 
       if (element.hasAttribute('x-if')) {
@@ -2905,23 +3071,20 @@ function walkTree(element, parentSubs, ready, delegate) {
         }
 
         ready(scopes => {
-          var del = wrap$1(_comment.parentElement).delegate();
+          var del = wrap(_comment.parentElement).delegate();
           currentSubs.push(del.off);
           getStore(_comment, 'htmlSubs', currentSubs);
           var nestedSubs = [];
           currentSubs.push(nestedSubs);
           currentSubs.push(watch(watchRun(scopes, exp), val => {
-            if (!isIterable(val)) return;
             unsubNested(nestedSubs);
             items.forEach(item => {
               item.remove();
             });
             items.clear();
             var runs = [];
-            var i = -1;
 
-            var _loop = function _loop(item) {
-              i++;
+            var repeat = (item, i) => {
               var forSubs = [];
               nestedSubs.push(forSubs);
               var scope = {
@@ -2938,8 +3101,17 @@ function walkTree(element, parentSubs, ready, delegate) {
               runs.push(() => processed.run([...scopes, getScope(elem, forSubs, scope)]));
             };
 
-            for (var item of val) {
-              _loop(item);
+            var i = -1;
+
+            if (isIterable(val)) {
+              for (var item of val) {
+                i++;
+                repeat(item, i);
+              }
+            } else if (isObject(val)) {
+              for (var _i in val) {
+                repeat(val[_i], _i);
+              }
             }
 
             runs.forEach(run => run());
@@ -2980,7 +3152,7 @@ function walkTree(element, parentSubs, ready, delegate) {
           v: void 0
         };
       } else {
-        var _loop2 = function _loop2(att) {
+        var _loop = function _loop(att) {
           if (att.nodeName.startsWith(':')) {
             var _at2 = att.nodeName.slice(1);
 
@@ -3036,7 +3208,7 @@ function walkTree(element, parentSubs, ready, delegate) {
         };
 
         for (var att of element.attributes) {
-          _loop2(att);
+          _loop(att);
         }
       }
     }();
@@ -3044,7 +3216,7 @@ function walkTree(element, parentSubs, ready, delegate) {
     if (typeof _ret === "object") return _ret.v;
   }
 
-  var _loop3 = function _loop3(el) {
+  var _loop2 = function _loop2(el) {
     if (el instanceof Element) {
       var execSteps = [];
 
@@ -3092,7 +3264,7 @@ function walkTree(element, parentSubs, ready, delegate) {
   };
 
   for (var el of element.childNodes) {
-    _loop3(el);
+    _loop2(el);
   }
 }
 
@@ -3166,5 +3338,5 @@ function walkText(s) {
 }
 
 export default init;
-export { Component, ElementCollection$1 as ElementCollection, allowedGlobals, allowedPrototypes, defineComponent, defineDirective, getScopes, run, sandbox, unsubNested, watch, wrap$1 as wrap };
+export { Component, allowedGlobals, allowedPrototypes, defineComponent, defineDirective, getScopes, run, sandbox, unsubNested, watch };
 //# sourceMappingURL=Scope.js.map
