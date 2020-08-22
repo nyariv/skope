@@ -511,13 +511,27 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
         return [getScope(element, currentSubs, {}, true)];
       });
     }
-    if (element.hasAttribute('x-data')) {
-      ready(scopes => {
-        scopes = scopes.slice();
-        scopes.push(getScope(element, currentSubs));
-        scopes.push(getDataScope(element, run(getRootElement(scopes), 'return ' + (element.getAttribute('x-data') || '{}'), scopes)));
-        return scopes;
-      });
+    let elementScopeAdded = false;
+    for (let att of element.attributes) {
+      if (att.nodeName.startsWith("$")) {
+        const name = att.nodeName.substring(1);
+        if (!name.match(regVarName)) {
+          console.error(`Invalid variable name in attribute ${att.nodeName}`);
+          continue;
+        };
+        if (!elementScopeAdded) {
+          elementScopeAdded = true;
+          const prevReady = ready;
+          ready = (cb: (scopes: ElementScope[]) => void) => {
+            prevReady((s: ElementScope[]) => {
+              cb(pushScope(s, element, currentSubs));
+            });
+          };
+        }
+        ready(scopes => {
+          run(getRootElement(scopes), `let ${name} = ${att.nodeValue}`, scopes);
+        });
+      }
     }
     if (element instanceof HTMLScriptElement) {
       if (element.type === 'scopejs') {
