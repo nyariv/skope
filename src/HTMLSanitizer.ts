@@ -78,7 +78,32 @@ sanitizeType([HTMLAnchorElement,
               'shape', 
               'coords'], (el: Element) => { return true; });
 sanitizeType([], ['href', ], (el: Element) => { return true; });
-sanitizeType([HTMLButtonElement], ['type'], (el: Element) => { return true; });
+sanitizeType([HTMLButtonElement], ['type', 'value'], (el: HTMLButtonElement) => {
+  if (el.type !== "reset" && el.type !== "button") {
+    el.type = "button"
+  }
+  return true; 
+});
+const allowedInputs = new Set([
+  'button',
+  'checkbox',
+  'color', 
+  'date', 
+  'datetime-local', 
+  'email', 
+  'file', 
+  'month', 
+  'number', 
+  'password',
+  'radio', 
+  'range',
+  'reset',
+  'tel', 
+  'text', 
+  'time', 
+  'url', 
+  'week'
+]);
 sanitizeType([HTMLInputElement,
               HTMLSelectElement,
               HTMLOptGroupElement,
@@ -105,7 +130,9 @@ sanitizeType([HTMLInputElement,
               'disabled',
               'required',
               'accept',
-              'list'], (el: Element) => { return true;});
+              'list'], (el: Element) => {
+  return true;
+});
 sanitizeType([HTMLScriptElement], ['type'], (el: HTMLScriptElement) => {
   if (!el.type || el.type === 'text/javascript') {
     el.type = 'scopejs';
@@ -132,12 +159,13 @@ sanitizeType([HTMLPictureElement,
 
 const regHrefJS = /^\s*javascript:/i;
 const regValidSrc = /^((https?:)?\/\/|\/|#)/;
-const regSystemAtt = /^(:|@|x\-)/;
+const regSystemAtt = /^(:|@|\$|x\-)/;
 
 const srcAttributes = new Set(['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from']);
 
 export function santizeAttribute(element: Element, attName: string, attValue: string, preprocess = false): boolean {
   const allowed = types.get(element.constructor as new () => Element);
+  if (!allowed) return false;
   attName = attName.toLowerCase();
   if (attName.match(regSystemAtt)) {
     if (!preprocess) return false;
@@ -162,6 +190,10 @@ export function santizeAttribute(element: Element, attName: string, attValue: st
     }
   } else if (!allowed.attributes.has(attName) && !globalAllowedAtttributes.has(attName)) {
     return false;
+  } else if (element instanceof HTMLInputElement && attName == 'type') {
+    return allowedInputs.has(attValue);
+  } else if (element instanceof HTMLButtonElement && attName == 'type') {
+    return attValue === 'reset' || attValue === 'button';
   }
   return true;
 }
