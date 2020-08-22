@@ -69,11 +69,10 @@ class Scope {
   constructor(parent, vars = {}, functionThis = undefined) {
     this.const = new Set();
     this.let = new Set();
-    const keys = new Set(Object.keys(vars));
     this.parent = parent;
     this.allVars = vars;
-    this.var = keys;
-    this.globals = !parent ? keys : new Set();
+    this.var = new Set(Object.keys(vars));
+    this.globals = !parent ? new Set(Object.keys(vars)) : new Set();
     this.functionThis = functionThis || !parent;
 
     if (functionThis) {
