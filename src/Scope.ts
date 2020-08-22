@@ -39,7 +39,7 @@ ElementCollection.prototype.html = function (content?: string|Node|ElementCollec
   if (!elem) return this;
   contentElem = preprocessHTML(content);
   const currentSubs: subs = getStore<subs>(elem, 'currentSubs', []);
-  for (let el of elem.children) {
+  for (let el of [...elem.children]) {
     unsubNested(getStore<subs>(el, 'currentSubs'));
   }
   const processed = processHTML(contentElem, currentSubs, defaultDelegateObject);
@@ -579,43 +579,49 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
       }
     }
   }
-  const execSteps: ((scopes: ElementScope[]) => void)[] = [];
-  const r = (cb: (scopes: ElementScope[]) => void) => execSteps.push(cb);
-  for (let el of element.childNodes) {
+  if (element instanceof Element && element.hasAttribute('x-static')) {
+    for (let el of [...element.children]) {
+      sanitizeHTML(el, true);
+    }
+  } else {
     const execSteps: ((scopes: ElementScope[]) => void)[] = [];
-    if (el instanceof Element) {
-      walkTree(el, currentSubs, r, delegate);
-    } else if (el.nodeType === 3) {
-      const strings = walkText(el.textContent);
-      const nodes: Text[] = [];
-      let found = false;
-      strings.forEach((s) => {
-        if (s.startsWith("{{") && s.endsWith("}}")) {
-          found = true;
-          const placeholder = document.createTextNode("");
-          ready((scopes) => {
-            currentSubs.push(watch(watchRun(scopes, s.slice(2, -2)), (val, lastVal) => {
-              placeholder.textContent = val + "";
-            }));
-            return scopes;
-          });
-          nodes.push(placeholder);
-        } else {
-          nodes.push(document.createTextNode(s));
-        }
-      });
-
-      if (found) {
-        nodes.forEach((n) => {
-          el.before(n);
+    const r = (cb: (scopes: ElementScope[]) => void) => execSteps.push(cb);
+    for (let el of [...element.childNodes]) {
+      const execSteps: ((scopes: ElementScope[]) => void)[] = [];
+      if (el instanceof Element) {
+        walkTree(el, currentSubs, r, delegate);
+      } else if (el.nodeType === 3) {
+        const strings = walkText(el.textContent);
+        const nodes: Text[] = [];
+        let found = false;
+        strings.forEach((s) => {
+          if (s.startsWith("{{") && s.endsWith("}}")) {
+            found = true;
+            const placeholder = document.createTextNode("");
+            ready((scopes) => {
+              currentSubs.push(watch(watchRun(scopes, s.slice(2, -2)), (val, lastVal) => {
+                placeholder.textContent = val + "";
+              }));
+              return scopes;
+            });
+            nodes.push(placeholder);
+          } else {
+            nodes.push(document.createTextNode(s));
+          }
         });
-        el.remove();
+  
+        if (found) {
+          nodes.forEach((n) => {
+            el.before(n);
+          });
+          el.remove();
+        }
       }
     }
+    ready((scopes) => {
+      for (let cb of execSteps) cb(scopes);
+    });
   }
-  ready((scopes) => {
-    for (let cb of execSteps) cb(scopes);
-  });
 }
 
 const closings: any = {

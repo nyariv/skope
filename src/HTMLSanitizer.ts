@@ -198,23 +198,25 @@ export function santizeAttribute(element: Element, attName: string, attValue: st
   return true;
 }
 
-export function sanitizeHTML(element: Element|DocumentFragment) {
-  const allowed = types.get(element.constructor as new () => Element);
+export function sanitizeHTML(element: Element|DocumentFragment, staticHtml = false) {
   if (!(element instanceof DocumentFragment)) {
-    if (!allowed || !allowed.element(element)) {
+    const allowed = types.get(element.constructor as new () => Element);
+    if (!allowed || !allowed.element(element) || (staticHtml && (element instanceof HTMLStyleElement || element instanceof HTMLScriptElement))) {
       element.remove();
       return;
     } else {
-      for (let att of element.attributes) {
+      for (let att of [...element.attributes]) {
         const attValue = att.nodeValue;
         const attName = att.nodeName;
-        if (!santizeAttribute(element, attName, attValue, true)) {
+        if (!santizeAttribute(element, attName, attValue, !staticHtml) || (staticHtml && ["id", "style"].includes(attName))) {
           element.removeAttribute(att.nodeName);
         }
       }
     }
   }
-  for (let el of element.children) {
-    sanitizeHTML(el);
+  if (element.children) {
+    for (let el of [...element.children]) {
+      sanitizeHTML(el, staticHtml);
+    }
   }
 }
