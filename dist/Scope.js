@@ -1584,26 +1584,30 @@ function santizeAttribute(element, attName, attValue) {
   return true;
 }
 function sanitizeHTML(element) {
-  var allowed = types.get(element.constructor);
+  var staticHtml = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
 
   if (!(element instanceof DocumentFragment)) {
-    if (!allowed || !allowed.element(element)) {
+    var allowed = types.get(element.constructor);
+
+    if (!allowed || !allowed.element(element) || staticHtml && (element instanceof HTMLStyleElement || element instanceof HTMLScriptElement)) {
       element.remove();
       return;
     } else {
-      for (var att of element.attributes) {
+      for (var att of [...element.attributes]) {
         var attValue = att.nodeValue;
         var attName = att.nodeName;
 
-        if (!santizeAttribute(element, attName, attValue, true)) {
+        if (!santizeAttribute(element, attName, attValue, !staticHtml) || staticHtml && ["id", "style"].includes(attName)) {
           element.removeAttribute(att.nodeName);
         }
       }
     }
   }
 
-  for (var el of element.children) {
-    sanitizeHTML(el);
+  if (element.children) {
+    for (var el of [...element.children]) {
+      sanitizeHTML(el, staticHtml);
+    }
   }
 }
 
@@ -2593,7 +2597,7 @@ ElementCollection.prototype.html = function (content) {
   contentElem = preprocessHTML(content);
   var currentSubs = getStore(elem, 'currentSubs', []);
 
-  for (var el of elem.children) {
+  for (var el of [...elem.children]) {
     unsubNested(getStore(el, 'currentSubs'));
   }
 
@@ -3214,52 +3218,59 @@ function walkTree(element, parentSubs, ready, delegate) {
     if (typeof _ret === "object") return _ret.v;
   }
 
-  var execSteps = [];
+  if (element instanceof Element && element.hasAttribute('x-static')) {
+    for (var el of [...element.children]) {
+      sanitizeHTML(el, true);
+    }
+  } else {
+    var execSteps = [];
 
-  var r = cb => execSteps.push(cb);
+    var r = cb => execSteps.push(cb);
 
-  var _loop3 = function _loop3(el) {
+    var _loop3 = function _loop3(_el) {
 
-    if (el instanceof Element) {
-      walkTree(el, currentSubs, r, delegate);
-    } else if (el.nodeType === 3) {
-      var strings = walkText(el.textContent);
-      var nodes = [];
-      var found = false;
-      strings.forEach(s => {
-        if (s.startsWith("{{") && s.endsWith("}}")) {
-          found = true;
-          var placeholder = document.createTextNode("");
-          ready(scopes => {
-            currentSubs.push(watch(watchRun(scopes, s.slice(2, -2)), (val, lastVal) => {
-              placeholder.textContent = val + "";
-            }));
-            return scopes;
-          });
-          nodes.push(placeholder);
-        } else {
-          nodes.push(document.createTextNode(s));
-        }
-      });
-
-      if (found) {
-        nodes.forEach(n => {
-          el.before(n);
+      if (_el instanceof Element) {
+        walkTree(_el, currentSubs, r, delegate);
+      } else if (_el.nodeType === 3) {
+        var strings = walkText(_el.textContent);
+        var nodes = [];
+        var found = false;
+        strings.forEach(s => {
+          if (s.startsWith("{{") && s.endsWith("}}")) {
+            found = true;
+            var placeholder = document.createTextNode("");
+            ready(scopes => {
+              currentSubs.push(watch(watchRun(scopes, s.slice(2, -2)), (val, lastVal) => {
+                placeholder.textContent = val + "";
+              }));
+              return scopes;
+            });
+            nodes.push(placeholder);
+          } else {
+            nodes.push(document.createTextNode(s));
+          }
         });
-        el.remove();
+
+        if (found) {
+          nodes.forEach(n => {
+            _el.before(n);
+          });
+
+          _el.remove();
+        }
       }
-    }
-  };
+    };
 
-  for (var el of element.childNodes) {
-    _loop3(el);
+    for (var _el of [...element.childNodes]) {
+      _loop3(_el);
+    }
+
+    ready(scopes => {
+      for (var cb of execSteps) {
+        cb(scopes);
+      }
+    });
   }
-
-  ready(scopes => {
-    for (var cb of execSteps) {
-      cb(scopes);
-    }
-  });
 }
 
 var closings$1 = {
