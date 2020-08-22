@@ -19,21 +19,6 @@ function isObject (object: any): object is {[key: string]: unknown} {
   return object !== null && typeof object === 'object';
 }
 
-
-function walkFindSubs(elem: Node, up = false): subs {
-  if (!elem) return [];
-  let subs: subs = [];
-  for (let el of (up ? [elem.parentNode] : elem.childNodes)) {
-    const found = getStore<subs>(el, 'htmlSubs');
-    if (found) {
-      subs.push(found);
-    } else {
-      subs.push(...walkFindSubs(el));
-    }
-  }
-  return subs;
-}
-
 declare module './eQuery' {
   interface ElementCollection {
     html(content?: string|Node|ElementCollection): this;
@@ -53,24 +38,20 @@ ElementCollection.prototype.html = function (content?: string|Node|ElementCollec
   let elem = this.get(0);
   if (!elem) return this;
   contentElem = preprocessHTML(content);
-  let subsNested: subs = [];
-  const found = getStore<subs>(elem, 'childrenSubs', subsNested);
-  if (found !== subsNested) {
-    const subs: subs = getStore<subs>(elem, 'htmlSubs', []);
-    subs.push(subsNested);
+  const currentSubs: subs = getStore<subs>(elem, 'currentSubs', []);
+  for (let el of elem.children) {
+    unsubNested(getStore<subs>(el, 'currentSubs'));
   }
-  subsNested = found;
-  unsubNested(subsNested);
-  const processed = processHTML(contentElem, subsNested, defaultDelegateObject);
+  const processed = processHTML(contentElem, currentSubs, defaultDelegateObject);
   elem.innerHTML = '';
   elem.appendChild(processed.elem);
-  processed.run(getScopes(elem, {}, subsNested));
+  processed.run(getScopes(elem, currentSubs, {}));
   return this;
 };
 ElementCollection.prototype.text = function (set?: string) {
   if (set !== undefined) {
     this.forEach((elem: Element) => {
-      unsubNested(walkFindSubs(elem));
+      unsubNested(getStore<subs>(elem, 'childSubs'));
       elem.textContent = set;
     });
     return this;
@@ -80,7 +61,7 @@ ElementCollection.prototype.text = function (set?: string) {
 ElementCollection.prototype.detach = function () {
   const contentElem = document.createElement('template');
   for (let elem of this) {
-    unsubNested(getStore<subs>(elem, 'htmlSubs'));
+    unsubNested(getStore<subs>(elem, 'currentSubs'));
     contentElem.appendChild(elem);
   };
   return contentElem.content;
@@ -89,11 +70,6 @@ ElementCollection.prototype.detach = function () {
 allowedPrototypes.set(ElementCollection, new Set());
 allowedPrototypes.set(FileList, new Set());
 allowedPrototypes.set(File, new Set());
-
-const $watch = (cb: () => any, callback: (val: any, lastVal: any) => void): {unsubscribe: () => void} => {
-  const subUnsubs = watch(cb, callback);
-  return { unsubscribe: () => unsubNested(subUnsubs) };
-}
 
 class ElementScope {
   $el: ElementCollection;
@@ -104,6 +80,13 @@ class ElementScope {
   $dispatch(eventType: string, detail?: any, bubbles = true, cancelable = true) {
     this.$el.trigger(eventType, detail, bubbles, cancelable);
   }
+
+  $watch(cb: () => any, callback: (val: any, lastVal: any) => void): {unsubscribe: () => void} {
+    const subUnsubs = watch(cb, callback);
+    const sub = getStore(this.$el.get(0), 'currentSubs', []);
+    sub.push(subUnsubs);
+    return { unsubscribe: () => unsubNested(subUnsubs) };
+  }
 }
 
 function getRootElement(scopes: ElementScope[]): Element {
@@ -112,10 +95,9 @@ function getRootElement(scopes: ElementScope[]): Element {
 
 class RootScope extends ElementScope {
   $refs: {[name: string]: ElementCollection} = {};
-  $wrap = (element: wrapType) => {
+  $wrap(element: wrapType) {
     return wrap(element, this.$el);
   }
-  $watch = $watch
 }
 
 export class Component {}
@@ -138,7 +120,7 @@ export default function init(elems?: wrapType, component?: string) {
     .forEach((elem) => {
       const comp = component || elem.getAttribute('x-app');
       const subs: subs = [];
-      const scope = getStore<ElementScope>(elem, 'scope', components[comp] || getScope(elem, subs, {}, true));
+      const scope = getScope(elem, subs, components[comp] || {}, true);
       preprocessHTML(elem);
       const processed = processHTML(elem, subs, defaultDelegateObject);
       elem.setAttribute('x-processed', '');
@@ -148,29 +130,26 @@ export default function init(elems?: wrapType, component?: string) {
 }
 
 function getScope(element: Element, subs: subs, vars: {[variable: string]: any} = {}, root = false) {
-  const scope = getStore<ElementScope>(element, 'scope', root ? new RootScope(element) : new ElementScope(element));
-  getStore<subs>(element, 'htmlSubs', subs);
-  subs.push(() => {
-    scope.$el = null;
-    deleteStore(element, 'htmlSubs');
-    deleteStore(element, 'scope');
-  });
+  let scope = getStore<ElementScope>(element, 'scope');
+  if (!scope) {
+    getStore<subs>(element, 'currentSubs', subs);
+    scope = getStore<ElementScope>(element, 'scope', root ? new RootScope(element) : new ElementScope(element));
+    subs.push(() => {
+      scope.$el = null;
+      deleteStore(element, 'currentSubs');
+      deleteStore(element, 'scope');
+    });
+  }
   Object.assign(scope, vars);
   return scope;
 }
 
-function getDataScope<T>(element: Element, data?: T) {
-  return getStore(element, 'dataScope', data);
-}
-
-export function getScopes(element: Element, newScope?: {[variable: string]: any}, subs: subs = []): ElementScope[] {
+export function getScopes(element: Element, subs: subs = [], newScope?: {[variable: string]: any}): ElementScope[] {
   if (!element) return [];
-  const datascope = getDataScope<any>(element);
   const scope = newScope === undefined ? getStore<ElementScope>(element, 'scope') : getScope(element, subs, newScope);
   const scopes: ElementScope[] = [];
   if (scope) scopes.push(scope);
-  if (datascope) scopes.push(datascope);
-  return [...(element.hasAttribute('x-detached') ? <ElementScope[]>[] : getScopes(element.parentElement)), ...scopes];
+  return [...(element.hasAttribute('x-detached') ? [] : getScopes(element.parentElement)), ...scopes];
 }
 
 const calls: (() => void)[] = [];
@@ -259,29 +238,30 @@ export function run(el: Node, code: string, scopes: ElementScope[]) {
   return codes[code](...scopes);
 }
 
-const directives: {[name: string]: (exce: DirectiveExec, ...scopes: ElementScope[]) => subs} = {};
+const directives: {[name: string]: (exce: DirectiveExec, scopes: ElementScope[]) => subs} = {};
 
 export interface DirectiveExec {
   element: Element,
   directive: string,
   js: string,
   original: string,
-  subs: subs
+  subs: subs,
+  delegate: DelegateObject
 }
 
-defineDirective('show', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
+defineDirective('show', (exec: DirectiveExec, scopes: ElementScope[]) => {
   return watch(watchRun(scopes, exec.js), (val, lastVal) => {
     exec.element.classList.toggle('hide', !val);
   });
 });
 
-defineDirective('text', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
+defineDirective('text', (exec: DirectiveExec, scopes: ElementScope[]) => {
   return watch(watchRun(scopes, exec.js), (val, lastVal) => {
     wrap(exec.element).text(val + "");
   });
 });
 
-defineDirective('ref', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
+defineDirective('ref', (exec: DirectiveExec, scopes: ElementScope[]) => {
   if (!exec.js.match(regVarName)) {
     throw new Error('Invalid ref name: ' + exec.js);
   }
@@ -292,33 +272,41 @@ defineDirective('ref', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
   }];
 });
 
-defineDirective('model', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
+defineDirective('model', (exec: DirectiveExec, scopes: ElementScope[]) => {
   const el: any = exec.element;
   const isContentEditable = (el instanceof HTMLElement && (el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === ''));
   const isInput = (el instanceof HTMLInputElement && (!el.type || el.type === 'text' || el.type === 'tel')) 
                   || el instanceof HTMLTextAreaElement 
                   || isContentEditable;
   const $el = wrap(el);
-  let last: any;
+  let last: any = !isContentEditable ? $el.val() : $el.html();
   if (!el.hasAttribute('name')) {
     el.setAttribute('name', exec.js.trim());
   }
+  let reset = false;
   const change = () => {
     last = !isContentEditable ? $el.val() : $el.html();
-    run(getRootElement(scopes), exec.js.trim() + ' = $$value === undefined ? ' + exec.js.trim() + ' : $$value', [...scopes, getScope(el, exec.subs, {$$value: last})]);
+    run(getRootElement(scopes), exec.js.trim() + ' = ($$value === undefined && !reset) ? ' + exec.js.trim() + ' : $$value', pushScope(scopes, el, exec.subs, {$$value: last, reset}));
+    reset = false;
   }
-  el.addEventListener(isInput ? 'input' : 'change', change);
-  const subs = watch(watchRun(scopes, exec.js.trim()), (val, lastVal) => {
+  const sub: subs = [];
+  sub.push(exec.delegate.on(el, isInput ? 'input' : 'change', change));
+  if (el.form) {
+    const $form = wrap(el.form);
+    sub.push($form.delegate().on($form.get(0), 'reset', () => reset = !!setTimeout(change)));
+  }
+  sub.push(watch(watchRun(scopes, exec.js.trim()), (val, lastVal) => {
+    if (val === last) return;
     if (isContentEditable) {
       $el.html(val + "");
     } else {
       $el.val(val as any);
     }
-  });
-  return [() => exec.element.removeEventListener(isInput ? 'input' : 'change', change), subs];
+  }));
+  return sub;
 });
 
-defineDirective('html', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
+defineDirective('html', (exec: DirectiveExec, scopes: ElementScope[]) => {
   return watch(watchRun(scopes, exec.js), (val, lastVal) => {
     if (val instanceof Node || typeof val === 'string' || val instanceof ElementCollection) {
       wrap(exec.element).html(val);
@@ -326,24 +314,23 @@ defineDirective('html', (exec: DirectiveExec, ...scopes: ElementScope[]) => {
   });
 });
 
-export function defineDirective(name: string, callback: (exce: DirectiveExec, ...scopes: ElementScope[]) => subs) {
+export function defineDirective(name: string, callback: (exce: DirectiveExec, scopes: ElementScope[]) => subs) {
   directives[name] = callback;
 }
 
-function runDirective(exec: DirectiveExec, ...scopes: ElementScope[]) {
+function runDirective(exec: DirectiveExec, scopes: ElementScope[]) {
   if (directives[exec.directive]) {
-    return directives[exec.directive](exec, ...scopes);
+    return directives[exec.directive](exec, scopes);
   }
   return [];
 }
 
 function walkerInstance() {
-  const execSteps: ((scopes: ElementScope[]) => ElementScope[])[] = [];
+  const execSteps: ((scopes: ElementScope[]) => void)[] = [];
   return {
-    ready: (cb: (scopes: ElementScope[]) => ElementScope[]) => execSteps.push(cb),
-    run: (scopes: ElementScope[]) => {
-      let s = scopes;
-      execSteps.forEach((cb) => s = cb(s))
+    ready: (cb: (scopes: ElementScope[]) => void) => execSteps.push(cb),
+    run: function runNested(scopes: ElementScope[]) {
+      execSteps.forEach((cb) => cb(scopes))
     }
   }
 }
@@ -390,19 +377,21 @@ export function unsubNested(subs: sub) {
 }
 
 export type sub = (() => void)|sub[];
-export type subs = sub[];
-function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementScope[]) => ElementScope[]) => void, delegate: DelegateObject) {
-  let pushed = false;
-  const currentSubs: subs = getStore(element, 'htmlSubs') || [];
-  const pushSubs = () => {
-    if (pushed) return;
-    getStore(element, 'htmlSubs', currentSubs);
-    pushed = true;
-    parentSubs.push(currentSubs);
-  }
-  if (element instanceof Element) {
-    pushSubs();
 
+function pushScope(scopes: ElementScope[], elem: Element, sub: subs, vars?: any) {
+  const found = getStore<ElementScope>(elem, 'scope');
+  const scope = getScope(elem, sub, vars);
+  scopes = scopes.slice();
+  scopes.push(scope);
+  return scopes;
+}
+
+export type subs = sub[];
+function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementScope[]) => void) => void, delegate: DelegateObject) {
+  let currentSubs: subs = [];
+  parentSubs.push(currentSubs);
+  if (element instanceof Element) {
+    getStore(element, 'currentSubs', parentSubs);
     const $element = wrap(element);
     element.removeAttribute('x-cloak');
     if (element.hasAttribute('x-if')) {
@@ -412,9 +401,9 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
       element.removeAttribute('x-if');
       element.before(comment);
       element.remove();
-      deleteStore(element, 'htmlSubs');
+      deleteStore(element, 'currentSubs');
       ready((scopes) => {
-        getStore<subs>(comment, 'htmlSubs', currentSubs);
+        getStore<subs>(comment, 'currentSubs', currentSubs);
         const nestedSubs: subs = [];
         currentSubs.push(nestedSubs)
         currentSubs.push(watch(watchRun(scopes, at), (val, lastVal) => {
@@ -423,7 +412,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
               ifElem = element.cloneNode(true) as Element;
               const processed = processHTML(ifElem, nestedSubs, delegate);
               comment.after(processed.elem);
-              processed.run([...scopes, getScope(ifElem, nestedSubs)]);
+              processed.run(pushScope(scopes, ifElem, nestedSubs));
             }
           } else {
             if (ifElem) {
@@ -433,7 +422,6 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
             }
           }
         }));
-        return scopes;
       });
       return;
     }
@@ -441,7 +429,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
       const comment = document.createComment('x-for');
       element.after(comment);
       element.remove();
-      deleteStore(element, 'htmlSubs');
+      deleteStore(element, 'currentSubs');
       const items = new Set<Element>();
       let exp: string;
       const at = element.getAttribute('x-for');
@@ -467,7 +455,6 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
       ready((scopes) => {
         const del = wrap(comment.parentElement).delegate();
         currentSubs.push(del.off);
-        getStore<subs>(comment, 'htmlSubs', currentSubs);
         const nestedSubs: subs = [];
         currentSubs.push(nestedSubs);
         currentSubs.push(watch(watchRun(scopes, exp), (val) => {
@@ -487,7 +474,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
             const processed = processHTML(elem, forSubs, del);
             comment.before(processed.elem);
             items.add(elem);
-            runs.push(() => processed.run([...scopes, getScope(elem, forSubs, scope)]));
+            runs.push(() => processed.run(pushScope(scopes, elem, forSubs, scope)));
           }
           let i = -1;
           if (isIterable(val)) {
@@ -502,14 +489,16 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
           }
           runs.forEach((run) => run());
         }));
-        return scopes;
       });
       return;
     }
     if (element.hasAttribute('x-detached')) {
+      let nestedScopes: ElementScope[];
       ready((scopes) => {
-        return [getScope(element, currentSubs, {}, true)];
+        nestedScopes = [getScope(element, currentSubs, {}, true)];
       });
+      const prevReady = ready;
+      ready = (cb: (scopes: ElementScope[]) => void) => prevReady(() => cb(nestedScopes));
     }
     let elementScopeAdded = false;
     for (let att of element.attributes) {
@@ -537,7 +526,6 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
       if (element.type === 'scopejs') {
         ready((scopes) => {
           run(getRootElement(scopes), element.innerHTML, scopes);
-          return scopes;
         });
       } else {
         element.remove();
@@ -548,8 +536,6 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
         if (att.nodeName.startsWith(':')) {
           const at = att.nodeName.slice(1);
           ready((scopes) => {
-            const nestedSubs: subs = [];
-            currentSubs.push(nestedSubs);
             currentSubs.push(watch(watchRun(scopes, att.nodeValue), (val: any, lastVal) => {
               if (typeof val === 'object' && ['style', 'class'].includes(at)) {
                 if (at === 'class') {
@@ -565,20 +551,18 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
                 $element.attr(at, val + "");
               }
             }));
-            return scopes;
           });
         } else if (att.nodeName.startsWith('@')) {
           const parts = att.nodeName.slice(1).split('.');
           ready((scopes) => {
             const ev = (e: EqEvent) => {
-              run(getRootElement(scopes), att.nodeValue, [...scopes, getScope(element, currentSubs, {$event: e})])
+              run(getRootElement(scopes), att.nodeValue, pushScope(scopes, element, currentSubs, {$event: e}));
             };
             if (parts[1] === 'once') {
               currentSubs.push(delegate.one(element, parts[0], ev));
             } else {
               currentSubs.push(delegate.on(element, parts[0], ev));
             }
-            return scopes;
           });
         } else if (att.nodeName.startsWith('x-')) {
           ready((scopes) => {
@@ -587,24 +571,20 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
               directive: att.nodeName.slice(2),
               js: att.nodeValue,
               original: element.outerHTML,
-              subs: currentSubs
-            }, ...scopes, getScope(element, currentSubs)));
-            return scopes;
+              subs: currentSubs,
+              delegate
+            }, pushScope(scopes, element, currentSubs)));
           });
         }
       }
     }
   }
+  const execSteps: ((scopes: ElementScope[]) => void)[] = [];
+  const r = (cb: (scopes: ElementScope[]) => void) => execSteps.push(cb);
   for (let el of element.childNodes) {
+    const execSteps: ((scopes: ElementScope[]) => void)[] = [];
     if (el instanceof Element) {
-      const execSteps: ((scopes: ElementScope[]) => ElementScope[])[] = [];
-      const r = (cb: (scopes: ElementScope[]) => ElementScope[]) => execSteps.push(cb);
-      walkTree(el, pushed ? currentSubs : parentSubs, r, delegate);
-      ready((scopes) => {
-        let s = scopes
-        for (let cb of execSteps) s = cb(s);
-        return scopes;
-      });
+      walkTree(el, currentSubs, r, delegate);
     } else if (el.nodeType === 3) {
       const strings = walkText(el.textContent);
       const nodes: Text[] = [];
@@ -613,8 +593,6 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
         if (s.startsWith("{{") && s.endsWith("}}")) {
           found = true;
           const placeholder = document.createTextNode("");
-          getStore<subs>(placeholder, 'htmlSubs', currentSubs);
-          pushSubs();
           ready((scopes) => {
             currentSubs.push(watch(watchRun(scopes, s.slice(2, -2)), (val, lastVal) => {
               placeholder.textContent = val + "";
@@ -635,6 +613,9 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
       }
     }
   }
+  ready((scopes) => {
+    for (let cb of execSteps) cb(scopes);
+  });
 }
 
 const closings: any = {
