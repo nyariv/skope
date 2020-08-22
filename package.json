@@ -10,7 +10,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@nyariv/sandboxjs": "^0.3.17"
+    "@nyariv/sandboxjs": "^0.3.18"
   },
   "devDependencies": {
     "@babel/core": "^7.10.5",
