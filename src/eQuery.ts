@@ -284,58 +284,64 @@ export class ElementCollection {
   }
 
   delegate(): DelegateObject {
+    const that = arr(this)[0];
+    let del: DelegateObject = getStore(that, 'delegate');
+    if (del) return del;
     const events = new WeakMap<Element, Map<string, Set<EqEventListenerAny>>>();
     const all: Set<EqEventListenerAny>[] = [];
     const once = new Set<EqEventListenerAny>();
     const started = new Map<string, () => void>();
-    const that = arr(this)[0];
     if (!that) return defaultDelegateObject;
-    return {
-      on<T extends Event>(elem: Element, event: string, callback: EqEventListener<T>) {
+    del = {
+      on<T extends Event>(elem: Element, ev: string, handler: EqEventListener<T>) {
         const evs = events.get(elem) || new Map<string, Set<EqEventListenerAny>>();
         events.set(elem, evs);
-        let cbs = evs.get(event);
-        if (!cbs) {
-          cbs = new Set();
-          all.push(cbs);
-          evs.set(event, cbs);
-        }
-        cbs.add(callback);
-        if (!started.has(event)) {
-          const evcb = (e: T) => {
-            let parent: Element = e.target as Element;
-            const listeners: Set<EqEventListener<T>>[] = [];
-            const elements: Element[] = [];
-            do {
-              let lts;
-              if (lts = events.get(parent)?.get(event)) {
-                listeners.push(lts);
-                elements.push(parent);
-              }
-            } while(parent != that && (parent = parent.parentElement))
-            const eq = wrapEvent(e);
-            listeners.forEach((handlers, i) => {
-              if (eq.stoppedPropagation) return;
-              handlers.forEach((handler) => {
-                if (eq.stoppedImmediatePropagation) return;
-                // eq.currentTarget = elements[i];
-                handler(eq);
-              });
-            })
+        const subs: (() => void)[] = [];
+        objectOrProp(ev, handler || false, (event, callback) => {
+          let cbs = evs.get(event);
+          if (!cbs) {
+            cbs = new Set();
+            all.push(cbs);
+            evs.set(event, cbs);
           }
-          const remove = () => {
-            started.delete(event);
-            that.removeEventListener(event, evcb);
+          cbs.add(callback);
+          if (!started.has(event)) {
+            const evcb = (e: T) => {
+              let parent: Element = e.target as Element;
+              const listeners: Set<EqEventListener<T>>[] = [];
+              const elements: Element[] = [];
+              do {
+                let lts;
+                if (lts = events.get(parent)?.get(event)) {
+                  listeners.push(lts);
+                  elements.push(parent);
+                }
+              } while(parent != that && (parent = parent.parentElement))
+              const eq = wrapEvent(e);
+              listeners.forEach((handlers, i) => {
+                if (eq.stoppedPropagation) return;
+                handlers.forEach((handler) => {
+                  if (eq.stoppedImmediatePropagation) return;
+                  // eq.currentTarget = elements[i];
+                  handler(eq);
+                });
+              })
+            }
+            const remove = () => {
+              started.delete(event);
+              that.removeEventListener(event, evcb);
+            }
+            that.addEventListener(event, evcb, true);
+            started.set(event, remove)
           }
-          that.addEventListener(event, evcb, true);
-          started.set(event, remove)
-        }
-        return () => {
-          events.get(elem)?.get(event)?.delete(callback);
-          if (events.get(elem)?.get(event).size === 0) {
-            events.get(elem)?.delete(event);
-          }
-        };
+          subs.push(() => {
+            events.get(elem)?.get(event)?.delete(callback);
+            if (events.get(elem)?.get(event).size === 0) {
+              events.get(elem)?.delete(event);
+            }
+          });
+        });
+        return () => subs.forEach((sub) => sub());
       },
       one<T extends Event>(elem: Element, event: string, callback:  EqEventListener<T>) {
         const cbev = (e: T&EqEvent) => {
@@ -359,6 +365,8 @@ export class ElementCollection {
         all.length = 0;
       }
     }
+    getStore(that, 'delegate', del);
+    return del;
   }
   
   /**
