@@ -3698,7 +3698,7 @@ function walkTree(element, parentSubs, ready, delegate) {
 
       var _loop = function _loop(att) {
         if (att.nodeName.startsWith("$")) {
-          var name = att.nodeName.substring(1);
+          var name = att.nodeName.substring(1).replace(/\-([\w\$])/g, (match, letter) => letter.toUpperCase());
 
           if (!name.match(regVarName)) {
             console.error("Invalid variable name in attribute ".concat(att.nodeName));
