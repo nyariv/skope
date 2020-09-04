@@ -1,0 +1,8 @@
+node_modules/
+.gitignore
+.git/
+test/
+src/
+.babelrc.js
+rollup.config.js
+tsconfig.json
