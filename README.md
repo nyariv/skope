@@ -23,7 +23,7 @@ npm install @nyariv/scopejs
 <html lang="en">
 <head>
   <script deferred src="https://cdn.jsdelivr.net/gh/nyariv/scope-js@latest/dist/defaultInit.js" type="module"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/nyariv/scope-js@latest/dist/scopejs.css">>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/nyariv/scope-js@latest/dist/scopejs.css">
   <meta charset="UTF-8">
 </head>
   <body x-app x-cloak $my-var="'Hello World'">
