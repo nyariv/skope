@@ -6,7 +6,7 @@ Having sandboxed js-in-html enables creating interactive html without permitting
 
 The sanbox library does not use `eval` / `Function` under the hood, and therefore makes this library [CSP](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) friendly.
 
-This would allow, for example, content platforms (such as WordPress, Drupal, or any other blog platforms), to allow their users to embed dynamic elements in their content without having to worry about security.
+This allows, for example, content platforms (such as WordPress, Drupal, or any other blog platforms), to allow their users to embed dynamic elements in their content without having to worry about security.
 
 This library makes html in REST api safe again!
 
@@ -21,14 +21,14 @@ npm install @nyariv/scopejs
 ```html
 <!DOCTYPE html>
 <html lang="en">
+<head>
   <script deferred src="https://cdn.jsdelivr.net/gh/nyariv/scope-js@latest/dist/defaultInit.js" type="module"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/nyariv/scope-js@latest/dist/scopejs.css">>
-<head>
   <meta charset="UTF-8">
 </head>
-<body x-app x-cloak $myVar="'Hello World'">
-  {{myVar}}
-</body>
+  <body x-app x-cloak $my-var="'Hello World'">
+    {{myVar}}
+  </body>
 </html>
 ```
 
@@ -36,9 +36,9 @@ npm install @nyariv/scopejs
 ### Variables
 
 ```html
-<div $var1="'Hello'" $var2="'World'">
-  {{var1}} {{var2}}
-</div>
+  <div $var1="'Hello'" $var2="'World'">
+    {{var1}} {{var2}}
+  </div>
 ```
 
 ### Events
@@ -46,72 +46,72 @@ npm install @nyariv/scopejs
 Trigger multiple times
 
 ```html
-<button $on="false" @click="on != on">{{on ? 'On' : 'Off'}}</button>
+  <button $on="false" @click="on = !on">{{on ? 'On' : 'Off'}}</button>
 ```
 
 Trigger only once
 
 ```html
-<button $on="false" @click.once="on != on">{{on ? 'On' : 'Off'}}</button>
+  <button $on="false" @click.once="on = !on">{{on ? 'On' : 'Off'}}</button>
 ```
 
 ### Attributes
 
 ```html
-<style>
-  .red {color: red}
-</style>
-<div :class="{red: true}">this is red</div>
+  <style>
+    .red {color: red}
+  </style>
+  <div :class="{red: true}">this is red</div>
 ```
 
 ### x-for
 
 ```html
-<div x-for="i in [1,2,3]"> {{i}} </div>
+  <div> <span x-for="i in [1,2,3]"> {{i}} </span> </div
 ```
 
 ### x-if
 
 ```html
-<div $on="false">
-  <button @click="on != on">{{on ? 'On' : 'Off'}}</button>
-  <div x-if="on"> Hello World </div>
-<div>
+  <div $on="false">
+    <button @click="on = !on">{{on ? 'On' : 'Off'}}</button>
+    <div x-if="on"> Hello World </div>
+  </div>
 ```
 
 ### x-show
 
 ```html
-<div $on="false">
-  <button @click="on != on">{{on ? 'On' : 'Off'}}</button>
-  <div x-show="on"> Hello World </div>
-<div>
+  <div $on="false">
+    <button @click="on = !on">{{on ? 'On' : 'Off'}}</button>
+    <div x-show="on"> Hello World </div>
+  </div>
 ```
 
 ### x-model
 
 ```html
-<div $value="false">
-  <label>Say hi <input type="checkbox" x-model="value"></label>
-  <div x-show="on"> Hello World </div>
-<div>
+  <div $value="false">
+    <label>Say hi <input type="checkbox" x-model="value"></label>
+    <div x-show="value"> Hello World </div>
+  </div>
 ```
 
 ### x-text
 
 ```html
-<div $text="'Hello World'">
-  <label>Input <input type="text" x-model="text"></label>
-  <div x-text="text"></div>
-<div>
+  <div $text="'Hello World'">
+    <label>Input <input type="text" x-model="text"></label>
+    <div x-text="text"></div>
+  </div>
 ```
 ### x-html
 
 ```html
-<div $html="'<i>Hello World</i>'">
-  <label>Input <input type="text" x-model="html"></label>
-  <div x-html="html"></div>
-<div>
+  <div $html="'&lt;i&gt;Hello World&lt;/i&gt;'">
+    <label>Input <input type="text" x-model="html"></label>
+    <div x-html="html"></div>
+  </div>
 ```
 
 ## Tenets
