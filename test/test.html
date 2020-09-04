@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="../dist/Scope.js" type="module"></script>
+  <script deferred src="../dist/defaultInit.js" type="module"></script>
+  <link rel="stylesheet" href="../dist/scopejs.css">
   <title>Scope.js Test</title>
   <style>
-    [x-cloak] {display: none}
     body {font-family: Arial, Helvetica, sans-serif; font-size: 14px;}
     .containers {display: flex}
     .containers > * {margin: 20px}
@@ -65,9 +65,5 @@
       </div>
     </form>
   </div>
-  <script type="module">
-    import init from "../dist/Scope.js";
-    init();
-  </script>
 </body>
 </html>
