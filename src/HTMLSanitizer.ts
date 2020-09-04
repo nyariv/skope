@@ -70,7 +70,6 @@ function sanitizeType(t: (new () => Element)[], allowedAttributes: string[], ele
 sanitizeType(defaultHTMLWhiteList, [], () => { return true;});
 
 sanitizeType([HTMLAnchorElement, 
-              SVGAElement, 
               HTMLAreaElement],
               ['href', 
               'xlink:href', 
@@ -158,7 +157,7 @@ sanitizeType([HTMLPictureElement,
               'loading'], (el: Element) => { return true; });
 
 const regHrefJS = /^\s*javascript:/i;
-const regValidSrc = /^((https?:)?\/\/|\/|#)/;
+const regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
 const regSystemAtt = /^(:|@|\$|x\-)/;
 
 const srcAttributes = new Set(['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from']);

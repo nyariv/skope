@@ -1,6 +1,6 @@
 // @ts-check
 
-import Sandbox from '@nyariv/sandboxjs'
+import Sandbox from '@nyariv/sandboxjs';
 import { ElementCollection, wrap, EqEvent, wrapType, getStore, deleteStore, $document, DelegateObject, defaultDelegateObject } from './eQuery'
 import { sanitizeHTML } from './HTMLSanitizer';
 
@@ -275,9 +275,6 @@ defineDirective('ref', (exec: DirectiveExec, scopes: ElementScope[]) => {
 defineDirective('model', (exec: DirectiveExec, scopes: ElementScope[]) => {
   const el: any = exec.element;
   const isContentEditable = (el instanceof HTMLElement && (el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === ''));
-  const isInput = (el instanceof HTMLInputElement && (!el.type || el.type === 'text' || el.type === 'tel')) 
-                  || el instanceof HTMLTextAreaElement 
-                  || isContentEditable;
   const $el = wrap(el);
   let last: any = !isContentEditable ? $el.val() : $el.html();
   if (!el.hasAttribute('name')) {
@@ -290,7 +287,7 @@ defineDirective('model', (exec: DirectiveExec, scopes: ElementScope[]) => {
     reset = false;
   }
   const sub: subs = [];
-  sub.push(exec.delegate.on(el, isInput ? 'input' : 'change', change));
+  sub.push(exec.delegate.on(el, 'input', change));
   if (el.form) {
     const $form = wrap(el.form);
     sub.push($form.delegate().on($form.get(0), 'reset', () => reset = !!setTimeout(change)));
