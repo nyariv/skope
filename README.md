@@ -13,7 +13,7 @@ This library makes html in REST api safe again!
 ## Installation
 
 ```
-npm install @nyariv/scopejs
+npm install skope
 ```
 
 ## Getting started
@@ -22,8 +22,8 @@ npm install @nyariv/scopejs
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script deferred src="https://cdn.jsdelivr.net/gh/nyariv/scope-js@latest/dist/defaultInit.js" type="module"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/nyariv/scope-js@latest/dist/scopejs.css">
+  <script deferred src="https://cdn.jsdelivr.net/gh/nyariv/skope@latest/dist/defaultInit.js" type="module"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/nyariv/skope@latest/dist/scopejs.css">
   <meta charset="UTF-8">
 </head>
   <body x-app x-cloak $my-var="'Hello World'">
