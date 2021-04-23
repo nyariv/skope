@@ -13,12 +13,13 @@
     .rating {width: 200px}
     [\@click] {cursor: pointer; user-select: none;}
     label {margin: 0 0 10px 0; display: block;}
-    form {display: flex; width: 50vw}
+    form {display: flex; width: 600px}
   </style>
 </head>
 <body x-app x-cloak>
   <div class="containers">
     <div class="rating" $offset="1" $range="[0]">
+      <h2>Repeat</h2>
       <script type="scopejs">
         $watch(() => offset, (val) => console.log(val));
       </script>
@@ -28,6 +29,7 @@
       </div>
     </div>
     <div class="html">
+      <h2>HTML</h2>
       <script type="scopejs">
         let text = "type <i>here</i>";
       </script>
@@ -36,6 +38,7 @@
     </div>
     <form x-ref="myForm" $values="{}">
       <div>
+        <h2>Form</h2>
         <label>Checkbox <input type="checkbox" x-model="values.checkbox"></label>
         <label>Radio 1 <input type="radio" value="radio1" x-model="values.radio"></label>
         <label>Radio 2 <input type="radio" value="radio2" x-model="values.radio"></label>
@@ -61,9 +64,68 @@
         <button type="button">Button</button>
       </div>
       <div>
+        <h2>Form values</h2>
         <pre x-text="JSON.stringify(values, '', '  ')"></pre>
       </div>
     </form>
+    <div>
+      <h2>Recursion</h2>
+<script>
+let menu = [
+  {
+    text: "Item 1", 
+    children: []
+  }, {
+    text: "Item 2", 
+    children: [
+      {
+        text: "Item 3", 
+        children: []
+      }, {
+        text: "Item 4", 
+        children: []
+      }
+    ]
+  }, {
+    text: "Item 5", 
+    children: [
+      {
+        text: "Item 6", 
+        children: [
+          {
+            text: "Item 7", 
+            children: []
+          }, {
+            text: "Item 8", 
+            children: []
+          }
+        ]
+      }, {
+        text: "Item 9", 
+        children: [
+          {
+            text: "Item 10", 
+            children: []
+          }, {
+            text: "Item 11", 
+            children: []
+          }
+        ]
+      }
+    ]
+  }, {
+    text: "Item 12", 
+    children: []
+  }
+];
+
+let template = `<li x-for="item in children" $children="item.children">
+                  {{item.text}}
+                  <ul x-if="item.children.length" x-html="template"></ul>
+                </li>`;
+</script>
+        <ol $children="menu" x-html="template"></ol>
+    </div>
   </div>
 </body>
 </html>
