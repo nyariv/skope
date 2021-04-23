@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script deferred src="../dist/defaultInit.js" type="module"></script>
-  <link rel="stylesheet" href="../dist/scopejs.css">
+  <link rel="stylesheet" href="../dist/skopejs.css">
   <title>Scope.js Test</title>
   <style>
     body {font-family: Arial, Helvetica, sans-serif; font-size: 14px;}
@@ -16,46 +16,46 @@
     form {display: flex; width: 600px}
   </style>
 </head>
-<body x-app x-cloak>
+<body s-app s-cloak>
   <div class="containers">
     <div class="rating" $offset="1" $range="[0]">
       <h2>Repeat</h2>
-      <script type="scopejs">
+      <script type="skopejs">
         $watch(() => offset, (val) => console.log(val));
       </script>
       <input type="number" value="1" @input="range = Array($el.val()).keys()">
-      <div x-for="(a, x) in range" @click="++offset">
-        <span x-for="b in [0,1,2,3,4]">{{ (a + offset) % 6 > b ? '★' : '☆' }}</span>
+      <div s-for="(a, x) in range" @click="++offset">
+        <span s-for="b in [0,1,2,3,4]">{{ (a + offset) % 6 > b ? '★' : '☆' }}</span>
       </div>
     </div>
     <div class="html">
       <h2>HTML</h2>
-      <script type="scopejs">
+      <script type="skopejs">
         let text = "type <i>here</i>";
       </script>
-      <textarea x-model="text" :cols="40" :rows="10"></textarea>
-      <div class="preview" x-html="text"></div>
+      <textarea s-model="text" :cols="40" :rows="10"></textarea>
+      <div class="preview" s-html="text"></div>
     </div>
-    <form x-ref="myForm" $values="{}">
+    <form s-ref="myForm" $values="{}">
       <div>
         <h2>Form</h2>
-        <label>Checkbox <input type="checkbox" x-model="values.checkbox"></label>
-        <label>Radio 1 <input type="radio" value="radio1" x-model="values.radio"></label>
-        <label>Radio 2 <input type="radio" value="radio2" x-model="values.radio"></label>
-        <label>Radio 3 <input type="radio" value="radio3" x-model="values.radio"></label>
-        <label>Radio 4 <input type="radio" value="radio4" x-model="values.radio"></label>
+        <label>Checkbox <input type="checkbox" s-model="values.checkbox"></label>
+        <label>Radio 1 <input type="radio" value="radio1" s-model="values.radio"></label>
+        <label>Radio 2 <input type="radio" value="radio2" s-model="values.radio"></label>
+        <label>Radio 3 <input type="radio" value="radio3" s-model="values.radio"></label>
+        <label>Radio 4 <input type="radio" value="radio4" s-model="values.radio"></label>
         <label>Select
-          <select x-model="values.select">
-            <option :value="'option' + x" x-for="x in [1,2,3,4,5]">Option {{x}}</option>
+          <select s-model="values.select">
+            <option :value="'option' + x" s-for="x in [1,2,3,4,5]">Option {{x}}</option>
           </select>
         </label>
         <label>Multi Select
-          <select x-model="values.multiSelect" multiple>
-            <option :value="'option' + x" x-for="x in [1,2,3,4,5]">Option {{x}}</option>
+          <select s-model="values.multiSelect" multiple>
+            <option :value="'option' + x" s-for="x in [1,2,3,4,5]">Option {{x}}</option>
           </select>
         </label>
-        <label x-for="type in ['color', 'date', 'datetime-local', 'email', 'file', 'month', 'number', 'password', 'range', 'tel', 'text', 'time', 'url', 'week']">
-          Input {{type}} <input x-model="values[type]" :name="type" :type="type">
+        <label s-for="type in ['color', 'date', 'datetime-local', 'email', 'file', 'month', 'number', 'password', 'range', 'tel', 'text', 'time', 'url', 'week']">
+          Input {{type}} <input s-model="values[type]" :name="type" :type="type">
         </label>
         <input type="reset">
         <input type="button" value="button">
@@ -65,7 +65,7 @@
       </div>
       <div>
         <h2>Form values</h2>
-        <pre x-text="JSON.stringify(values, '', '  ')"></pre>
+        <pre s-text="JSON.stringify(values, '', '  ')"></pre>
       </div>
     </form>
     <div>
@@ -119,12 +119,13 @@ let menu = [
   }
 ];
 
-let template = `<li x-for="item in children" $children="item.children">
-                  {{item.text}}
-                  <ul x-if="item.children.length" x-html="template"></ul>
-                </li>`;
+let template = `
+<li s-for="item in children" $children="item.children">
+  {{item.text}}
+  <ul s-if="item.children.length" s-html="template"></ul>
+</li>`;
 </script>
-        <ol $children="menu" x-html="template"></ol>
+        <ol $children="menu" s-html="template"></ol>
     </div>
   </div>
 </body>

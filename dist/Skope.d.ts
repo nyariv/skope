@@ -2,7 +2,6 @@ import Sandbox from '@nyariv/sandboxjs';
 import { ElementCollection, wrapType, DelegateObject } from './eQuery';
 export declare const globals: import("@nyariv/sandboxjs/dist/node/executor").IGlobals;
 export declare const prototypeWhitelist: Map<any, Set<string>>;
-export declare const sandbox: Sandbox;
 declare module './eQuery' {
     interface ElementCollection {
         html(content?: string | Node | ElementCollection): this;
@@ -21,6 +20,7 @@ declare class ElementScope {
 export declare class Component {
 }
 export declare function defineComponent(name: string, comp: Component): void;
+export declare const sandbox: Sandbox;
 export default function init(elems?: wrapType, component?: string): void;
 export declare function getScopes(element: Element, subs?: subs, newScope?: {
     [variable: string]: any;

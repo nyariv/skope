@@ -6,7 +6,6 @@ import { sanitizeHTML } from './HTMLSanitizer';
 
 export const globals = Sandbox.SAFE_GLOBALS;
 export const prototypeWhitelist = Sandbox.SAFE_PROTOTYPES;
-export const sandbox = new Sandbox({globals, prototypeWhitelist});
 
 const regVarName = /^\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*$/;
 const regKeyValName = /^\s*\(([a-zA-Z$_][a-zA-Z$_\d]*)\s*,\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*\)$/;
@@ -113,17 +112,19 @@ export function defineComponent(name: string, comp: Component) {
   }
 }
 
+export const sandbox = new Sandbox({globals, prototypeWhitelist});
+
 export default function init(elems?: wrapType, component?: string) {
   const runs: (() => void)[] = [];
-  (elems ? wrap(elems, $document) : $document.find('[x-app]').not('[x-app] [x-app]'))
-    .once('x-processed')
+  (elems ? wrap(elems, $document) : $document.find('[s-app]').not('[s-app] [s-app]'))
+    .once('s-processed')
     .forEach((elem) => {
-      const comp = component || elem.getAttribute('x-app');
+      const comp = component || elem.getAttribute('s-app');
       const subs: subs = [];
       const scope = getScope(elem, subs, components[comp] || {}, true);
       preprocessHTML(elem);
       const processed = processHTML(elem, subs, defaultDelegateObject);
-      elem.setAttribute('x-processed', '');
+      elem.setAttribute('s-processed', '');
       runs.push(() => processed.run([scope]));
     });
   runs.forEach((run) => run());
@@ -149,7 +150,7 @@ export function getScopes(element: Element, subs: subs = [], newScope?: {[variab
   const scope = newScope === undefined ? getStore<ElementScope>(element, 'scope') : getScope(element, subs, newScope);
   const scopes: ElementScope[] = [];
   if (scope) scopes.push(scope);
-  return [...(element.hasAttribute('x-detached') ? [] : getScopes(element.parentElement)), ...scopes];
+  return [...(element.hasAttribute('s-detached') ? [] : getScopes(element.parentElement)), ...scopes];
 }
 
 const calls: (() => void)[] = [];
@@ -391,12 +392,12 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
   if (element instanceof Element) {
     getStore(element, 'currentSubs', parentSubs);
     const $element = wrap(element);
-    element.removeAttribute('x-cloak');
-    if (element.hasAttribute('x-if')) {
-      const comment = document.createComment('x-if');
+    element.removeAttribute('s-cloak');
+    if (element.hasAttribute('s-if')) {
+      const comment = document.createComment('s-if');
       let ifElem: Element;
-      const at = element.getAttribute('x-if');
-      element.removeAttribute('x-if');
+      const at = element.getAttribute('s-if');
+      element.removeAttribute('s-if');
       element.before(comment);
       element.remove();
       deleteStore(element, 'currentSubs');
@@ -423,18 +424,18 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
       });
       return;
     }
-    if (element.hasAttribute('x-for')) {
-      const comment = document.createComment('x-for');
+    if (element.hasAttribute('s-for')) {
+      const comment = document.createComment('s-for');
       element.after(comment);
       element.remove();
       deleteStore(element, 'currentSubs');
       const items = new Set<Element>();
       let exp: string;
-      const at = element.getAttribute('x-for');
-      element.removeAttribute('x-for');
+      const at = element.getAttribute('s-for');
+      element.removeAttribute('s-for');
       let split = at.split(' in ');
       if (split.length < 2) {
-        throw new Error('In valid x-for directive: ' + at)
+        throw new Error('In valid s-for directive: ' + at)
       } else {
         exp = split.slice(1).join(' in ');
       }
@@ -446,7 +447,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
         value = varMatch[1];
       } else {
         const doubleMatch = varsExp.match(regKeyValName)
-        if (!doubleMatch) throw new Error('In valid x-for directive: ' + at)
+        if (!doubleMatch) throw new Error('In valid s-for directive: ' + at)
         key = doubleMatch[1];
         value = doubleMatch[2];
       }
@@ -490,7 +491,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
       });
       return;
     }
-    if (element.hasAttribute('x-detached')) {
+    if (element.hasAttribute('s-detached')) {
       let nestedScopes: ElementScope[];
       ready((scopes) => {
         nestedScopes = [getScope(element, currentSubs, {}, true)];
@@ -521,7 +522,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
       }
     }
     if (element instanceof HTMLScriptElement) {
-      if (element.type === 'scopejs') {
+      if (element.type === 'skopejs') {
         ready((scopes) => {
           run(getRootElement(scopes), element.innerHTML, scopes);
         });
@@ -562,7 +563,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
               currentSubs.push(delegate.on(element, parts[0], ev));
             }
           });
-        } else if (att.nodeName.startsWith('x-')) {
+        } else if (att.nodeName.startsWith('s-')) {
           ready((scopes) => {
             currentSubs.push(runDirective({
               element,
@@ -577,7 +578,7 @@ function walkTree(element: Node, parentSubs: subs, ready: (cb: (scopes: ElementS
       }
     }
   }
-  if (element instanceof Element && element.hasAttribute('x-static')) {
+  if (element instanceof Element && element.hasAttribute('s-static')) {
     for (let el of [...element.children]) {
       sanitizeHTML(el, true);
     }

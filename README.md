@@ -13,7 +13,7 @@ This library makes html in REST api safe again!
 ## Installation
 
 ```
-npm install skope
+npm i skope
 ```
 
 ## Getting started
@@ -23,10 +23,10 @@ npm install skope
 <html lang="en">
 <head>
   <script deferred src="https://cdn.jsdelivr.net/gh/nyariv/skope@latest/dist/defaultInit.js" type="module"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/nyariv/skope@latest/dist/scopejs.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/nyariv/skope@latest/dist/skopejs.css">
   <meta charset="UTF-8">
 </head>
-  <body x-app x-cloak $my-var="'Hello World'">
+  <body s-app s-cloak $my-var="'Hello World'">
     {{myVar}}
   </body>
 </html>
@@ -64,79 +64,100 @@ Trigger only once
   <div :class="{red: true}">this is red</div>
 ```
 
-### x-for
+### s-for
 
 ```html
-  <div> <span x-for="i in [1,2,3]"> {{i}} </span> </div
+  <div> <span s-for="i in [1,2,3]"> {{i}} </span> </div
 ```
 
-### x-if
-
-```html
-  <div $var1="false">
-    <button @click="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
-    <div x-if="var1"> Hello World </div>
-  </div>
-```
-
-### x-show
+### s-if
 
 ```html
   <div $var1="false">
     <button @click="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
-    <div x-show="var1"> Hello World </div>
+    <div s-if="var1"> Hello World </div>
   </div>
 ```
 
-### x-model
+### s-show
+
+```html
+  <div $var1="false">
+    <button @click="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
+    <div s-show="var1"> Hello World </div>
+  </div>
+```
+
+### s-model
 
 ```html
   <div $value="false">
-    <label>Say hi <input type="checkbox" x-model="value"></label>
-    <div x-show="value"> Hello World </div>
+    <label>Say hi <input type="checkbox" s-model="value"></label>
+    <div s-show="value"> Hello World </div>
   </div>
 ```
 
-### x-text
+### s-text
 
 ```html
   <div $text="'Hello World'">
-    <label>Input <input type="text" x-model="text"></label>
-    <div x-text="text"></div>
+    <label>Input <input type="text" s-model="text"></label>
+    <div s-text="text"></div>
   </div>
 ```
-### x-html
+### s-html
 
 ```html
   <div $html="'&lt;i&gt;Hello World&lt;/i&gt;'">
-    <label>Input <input type="text" x-model="html"></label>
-    <div x-html="html"></div>
+    <label>Input <input type="text" s-model="html"></label>
+    <div s-html="html"></div>
   </div>
 ```
 
-### x-detached
+### s-ref
 
-Create a scope of html that does not inherit scopes from parent elements.
+This attribute will save the element as a special skope element object in a map of elements and their assigned names in the `$refs` global.
+
+```html
+  <div $counter="0">
+    <button @click="$refs.counterElem.text(++counter)">Add One</button>
+    <div s-ref="counterElem">0</div>
+  <div>
+```
+
+A skope element can also be a collection of elements which have a single api to act on all of them, similar to jQuery.
+
+```html
+  <div $counter="0">
+    <button @click="$refs.counterElems.val(++counter)">Add One</button>
+    <input type="number" s-ref="counterElems" s-for="i in [0,0,0]">
+  <div>
+```
+
+### s-detached
+
+Create a scope of html that does not inherit scopes from parent elements, and has it its own `$refs` object.
 
 ```html
   <div $one="1">
-    <div x-detached>
+    <div s-detached>
       {{typeof one === 'undefined' ? 'detached' : 'not detached}}
     <div>
   <div>
 ```
 
-### x-static
+### s-static
 
-An elment with this attribute will not execute js in nested elements, and will sanitize the html with safe element types only.
+An element with this attribute will not execute js in its nested elements, and will sanitize the html with safe element types only.
 
 ```html
-  <div x-static>
+  <div s-static>
     <div $one="1">
       {{typeof one === 'undefined' ? 'detached' : 'not detached}}
     <div>
   <div>
 ```
+
 
 ## Tenets
 

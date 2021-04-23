@@ -39,7 +39,7 @@ export const defaultHTMLWhiteList: (new () => Element)[] = [
   HTMLTemplateElement,
   HTMLCanvasElement,
   HTMLElement
-]
+];
 
 const globalAllowedAtttributes = new Set([
   'id', 
@@ -134,9 +134,9 @@ sanitizeType([HTMLInputElement,
 });
 sanitizeType([HTMLScriptElement], ['type'], (el: HTMLScriptElement) => {
   if (!el.type || el.type === 'text/javascript') {
-    el.type = 'scopejs';
+    el.type = 'skopejs';
   }
-  return el.type === "scopejs";
+  return el.type === "skopejs";
 });
 sanitizeType([HTMLStyleElement], [], (el: Element) => { return true; });
 sanitizeType([HTMLPictureElement, 
@@ -158,7 +158,7 @@ sanitizeType([HTMLPictureElement,
 
 const regHrefJS = /^\s*javascript\s*:/i;
 const regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
-const regSystemAtt = /^(:|@|\$|x\-)/;
+const regSystemAtt = /^(:|@|\$|s\-)/;
 
 const srcAttributes = new Set(['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from']);
 

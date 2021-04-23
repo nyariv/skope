@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <script deferred src="../dist/defaultInit.js" type="module"></script>
-  <link rel="stylesheet" href="../dist/scopejs.css">
+  <link rel="stylesheet" href="../dist/skopejs.css">
   <meta charset="UTF-8">
 </head>
-<body x-app x-cloak $my-var="'Hello World'">
+<body s-app s-cloak $my-var="'Hello World'">
   {{myVar}}
 
   <div $var1="'Hello'" $var2="'World'">
@@ -21,43 +21,53 @@
   </style>
   <div :class="{red: true}">this is red</div>
   
-  <div> <span x-for="i in [1,2,3]"> {{i}} </span> </div>
+  <div> <span s-for="i in [1,2,3]"> {{i}} </span> </div>
 
   <div $var1="false">
     <button @click="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
-    <div x-if="var1"> Hello World </div>
+    <div s-if="var1"> Hello World </div>
   </div>
     
   <div $var1="false">
     <button @click="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
-    <div x-show="var1"> Hello World </div>
+    <div s-show="var1"> Hello World </div>
   </div>
 
   <div $value="false">
-    <label>Say hi <input type="checkbox" x-model="value"></label>
-    <div x-show="value"> Hello World </div>
+    <label>Say hi <input type="checkbox" s-model="value"></label>
+    <div s-show="value"> Hello World </div>
   </div>
   
   <div $text="'Hello World'">
-    <label>Input <input type="text" x-model="text"></label>
-    <div x-text="text"></div>
+    <label>Input <input type="text" s-model="text"></label>
+    <div s-text="text"></div>
   </div>
   
   <div $html="'&lt;i&gt;Hello World&lt;/i&gt;'">
-    <label>Input <input type="text" x-model="html"></label>
-    <div x-html="html"></div>
+    <label>Input <input type="text" s-model="html"></label>
+    <div s-html="html"></div>
   </div>
 
   <div $var1e="1">
-    <div x-detached>
+    <div s-detached>
       {{typeof one === 'undefined' ? 'detached' : 'not detached'}}
     </div>
   </div>
   
-  <div x-static>
+  <div s-static>
     <div $var1e="1">
       {{typeof one === 'undefined' ? 'detached' : 'not detached'}}
     </div>
   </div>
+
+  <div $counter="0">
+    <button @click="$refs.counterElem.text(++counter)">Add One</button>
+    <div s-ref="counterElem">0</div>
+  <div>
+
+  <div $counter="0">
+    <button @click="$refs.counterElems.val(++counter)">Add One</button>
+    <input type="number" s-ref="counterElems" s-for="i in [0,0,0]">
+  <div>
 </body>
 </html>
