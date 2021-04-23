@@ -1,8 +1,8 @@
 {
-  "name": "@nyariv/scopejs",
-  "version": "0.2.2",
+  "name": "skope",
+  "version": "0.3.0",
   "description": "A sandboxed js-in-html UI framework",
-  "main": "dist/Scope.js",
+  "main": "dist/Skope.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "rollup -c"

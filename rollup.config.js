@@ -7,10 +7,10 @@ import copy from "rollup-plugin-copy-assets";
 const extensions = ['.js', '.ts']
 
 export default {
-  input: ['src/Scope.ts', 'src/defaultInit.ts'],
+  input: ['src/Skope.ts', 'src/defaultInit.ts'],
   output: {
     dir: 'dist',
-    name: 'ScopeJS',
+    name: 'Skope',
     format: 'es',
     exports: 'named',
     sourcemap: true
@@ -18,7 +18,7 @@ export default {
   plugins: [
     copy({
       assets: [
-        "src/scopejs.css",
+        "src/skopejs.css",
       ],
     }),
     typescript(),

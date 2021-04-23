@@ -1,3 +1,3 @@
 
-  import init from "./Scope.js";
+  import init from "./Skope.js";
   init();

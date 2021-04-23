@@ -1,12 +1,12 @@
-# ScopeJS
+# Skope.js
 
 A sandboxed js-in-html UI framework. The main goal of this library is to allow user generated content to use javascript in html safely. The idea behind this is if this is safe enough for user generated content, then it is also safe for any other possible usecases.
 
-Having sandboxed js-in-html enables creating interactive html without permitting the use of all of the browsers's api, which would be dangerous if in the wrong hands. To use native browser api wrapper, functions should be provided to the app that use them, this would allow the app developer to sanitize and whitelist parameters to be used with the sensitive api.
+Having sandboxed js-in-html enables creating interactive html without permitting the use of all of the browsers's api, which would be dangerous if in the wrong hands. To use native browser api, wrapper functions should be provided to the app that use them, this would allow the app developer to sanitize and whitelist parameters to be used with the sensitive api.
 
-The sanbox library does not use `eval` / `Function` under the hood, and therefore makes this library [CSP](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) friendly.
+The sandbox library does not use `eval` / `Function` under the hood, and therefore makes this library [CSP](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) friendly.
 
-This allows, for example, content platforms (such as WordPress, Drupal, or any other blog platforms), to allow their users to embed dynamic elements in their content without having to worry about security.
+This allows, for example, content platforms (such as WordPress, Drupal, or any other CMS) to allow their users to embed dynamic elements in their content without having to worry about security.
 
 This library makes html in REST api safe again!
 
@@ -46,13 +46,13 @@ npm install @nyariv/scopejs
 Trigger multiple times
 
 ```html
-  <button $on="false" @click="on = !on">{{on ? 'On' : 'Off'}}</button>
+  <button $var1="false" @click="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
 ```
 
 Trigger only once
 
 ```html
-  <button $on="false" @click.once="on = !on">{{on ? 'On' : 'Off'}}</button>
+  <button $var1="false" @click.once="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
 ```
 
 ### Attributes
@@ -73,18 +73,18 @@ Trigger only once
 ### x-if
 
 ```html
-  <div $on="false">
-    <button @click="on = !on">{{on ? 'On' : 'Off'}}</button>
-    <div x-if="on"> Hello World </div>
+  <div $var1="false">
+    <button @click="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
+    <div x-if="var1"> Hello World </div>
   </div>
 ```
 
 ### x-show
 
 ```html
-  <div $on="false">
-    <button @click="on = !on">{{on ? 'On' : 'Off'}}</button>
-    <div x-show="on"> Hello World </div>
+  <div $var1="false">
+    <button @click="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
+    <div x-show="var1"> Hello World </div>
   </div>
 ```
 
@@ -112,6 +112,30 @@ Trigger only once
     <label>Input <input type="text" x-model="html"></label>
     <div x-html="html"></div>
   </div>
+```
+
+### x-detached
+
+Create a scope of html that does not inherit scopes from parent elements.
+
+```html
+  <div $one="1">
+    <div x-detached>
+      {{typeof one === 'undefined' ? 'detached' : 'not detached}}
+    <div>
+  <div>
+```
+
+### x-static
+
+An elment with this attribute will not execute js in nested elements, and will sanitize the html with safe element types only.
+
+```html
+  <div x-static>
+    <div $one="1">
+      {{typeof one === 'undefined' ? 'detached' : 'not detached}}
+    <div>
+  <div>
 ```
 
 ## Tenets

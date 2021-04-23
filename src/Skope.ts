@@ -193,6 +193,7 @@ export function watch(toWatch: () => any, handler: (val: unknown, lastVal: unkno
     }
     unsubNested(subUnsubs);
     let g = sandbox.subscribeGet((obj: any, name: string) => {
+      if (obj === undefined) return;
       const list = watchGets.get(obj) || new Set();
       list.add(name);
       watchGets.set(obj, list);
@@ -206,7 +207,7 @@ export function watch(toWatch: () => any, handler: (val: unknown, lastVal: unkno
     }
     g.unsubscribe();
     for (let item of watchGets) {
-      const obj = item[0]
+      const obj = item[0];
       for (let name of item[1]) {
         subUnsubs.push(sandbox.subscribeSet(obj, name, () => {
           if (update) return;

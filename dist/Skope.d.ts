@@ -1,7 +1,7 @@
 import Sandbox from '@nyariv/sandboxjs';
 import { ElementCollection, wrapType, DelegateObject } from './eQuery';
-export declare const allowedGlobals: import("@nyariv/sandboxjs/dist/executor").IGlobals;
-export declare const allowedPrototypes: Map<any, Set<string>>;
+export declare const globals: import("@nyariv/sandboxjs/dist/node/executor").IGlobals;
+export declare const prototypeWhitelist: Map<any, Set<string>>;
 export declare const sandbox: Sandbox;
 declare module './eQuery' {
     interface ElementCollection {
