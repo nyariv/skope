@@ -156,7 +156,7 @@ sanitizeType([HTMLPictureElement,
               'volume',
               'loading'], (el: Element) => { return true; });
 
-const regHrefJS = /^\s*javascript:/i;
+const regHrefJS = /^\s*javascript\s*:/i;
 const regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
 const regSystemAtt = /^(:|@|\$|x\-)/;
 

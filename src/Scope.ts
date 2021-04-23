@@ -4,9 +4,9 @@ import Sandbox from '@nyariv/sandboxjs';
 import { ElementCollection, wrap, EqEvent, wrapType, getStore, deleteStore, $document, DelegateObject, defaultDelegateObject } from './eQuery'
 import { sanitizeHTML } from './HTMLSanitizer';
 
-export const allowedGlobals = Sandbox.SAFE_GLOBALS;
-export const allowedPrototypes = Sandbox.SAFE_PROTOTYPES;
-export const sandbox = new Sandbox(allowedGlobals, allowedPrototypes);
+export const globals = Sandbox.SAFE_GLOBALS;
+export const prototypeWhitelist = Sandbox.SAFE_PROTOTYPES;
+export const sandbox = new Sandbox({globals, prototypeWhitelist});
 
 const regVarName = /^\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*$/;
 const regKeyValName = /^\s*\(([a-zA-Z$_][a-zA-Z$_\d]*)\s*,\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*\)$/;
@@ -67,9 +67,9 @@ ElementCollection.prototype.detach = function () {
   return contentElem.content;
 };
 
-allowedPrototypes.set(ElementCollection, new Set());
-allowedPrototypes.set(FileList, new Set());
-allowedPrototypes.set(File, new Set());
+prototypeWhitelist.set(ElementCollection, new Set());
+prototypeWhitelist.set(FileList, new Set());
+prototypeWhitelist.set(File, new Set());
 
 class ElementScope {
   $el: ElementCollection;
@@ -102,14 +102,14 @@ class RootScope extends ElementScope {
 
 export class Component {}
 
-allowedPrototypes.set(RootScope, new Set());
-allowedPrototypes.set(ElementScope, new Set());
+prototypeWhitelist.set(RootScope, new Set());
+prototypeWhitelist.set(ElementScope, new Set());
 
 const components: any = {};
 export function defineComponent(name: string, comp: Component) {
   components[name] = comp;
-  if (!allowedPrototypes.has(comp.constructor)) {
-    allowedPrototypes.set(comp.constructor, new Set());
+  if (!prototypeWhitelist.has(comp.constructor)) {
+    prototypeWhitelist.set(comp.constructor, new Set());
   }
 }
 
