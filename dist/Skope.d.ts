@@ -1,32 +1,22 @@
 import Sandbox from '@nyariv/sandboxjs';
-import { ElementCollection, wrapType, DelegateObject } from './eQuery';
-export declare const globals: import("@nyariv/sandboxjs/dist/node/executor").IGlobals;
-export declare const prototypeWhitelist: Map<any, Set<string>>;
-declare module './eQuery' {
-    interface ElementCollection {
-        html(content?: string | Node | ElementCollection): this;
-        text(set?: string): string | this;
-        detach(): DocumentFragment;
-    }
+import { wrapType, DelegateObject } from './eQuery';
+import { IElementCollection } from './eQuery';
+import HTMLSanitizer from './HTMLSanitizer';
+export declare class Component {
 }
-declare class ElementScope {
-    $el: ElementCollection;
-    constructor(element: Element);
+interface IElementScope {
+    $el: IElementCollection;
     $dispatch(eventType: string, detail?: any, bubbles?: boolean, cancelable?: boolean): void;
     $watch(cb: () => any, callback: (val: any, lastVal: any) => void): {
         unsubscribe: () => void;
     };
 }
-export declare class Component {
+interface IRootScope extends IElementScope {
+    $refs: {
+        [name: string]: IElementCollection;
+    };
+    $wrap(element: wrapType): IElementCollection;
 }
-export declare function defineComponent(name: string, comp: Component): void;
-export declare const sandbox: Sandbox;
-export default function init(elems?: wrapType, component?: string): void;
-export declare function getScopes(element: Element, subs?: subs, newScope?: {
-    [variable: string]: any;
-}): ElementScope[];
-export declare function watch(toWatch: () => any, handler: (val: unknown, lastVal: unknown) => void | Promise<void>): subs;
-export declare function run(el: Node, code: string, scopes: ElementScope[]): any;
 export interface DirectiveExec {
     element: Element;
     directive: string;
@@ -35,8 +25,36 @@ export interface DirectiveExec {
     subs: subs;
     delegate: DelegateObject;
 }
-export declare function defineDirective(name: string, callback: (exce: DirectiveExec, scopes: ElementScope[]) => subs): void;
-export declare function unsubNested(subs: sub): void;
 export declare type sub = (() => void) | sub[];
 export declare type subs = sub[];
+export default class Skope {
+    components: any;
+    sanitizer: HTMLSanitizer;
+    directives: {
+        [name: string]: (exce: DirectiveExec, scopes: IElementScope[]) => subs;
+    };
+    globals: import("@nyariv/sandboxjs/dist/node/executor").IGlobals;
+    prototypeWhitelist: Map<any, Set<string>>;
+    sandbox: Sandbox;
+    sandboxCache: WeakMap<Node, {
+        [code: string]: (...scopes: any[]) => any;
+    }>;
+    ElementCollection: new (item?: number | Element, ...items: Element[]) => IElementCollection;
+    wrap: (selector: wrapType, context?: IElementCollection) => IElementCollection;
+    defaultDelegateObject: DelegateObject;
+    getStore: <T>(elem: Node, store: string, defaultValue?: T) => T;
+    deleteStore: (elem: Element, store: string) => boolean;
+    RootScope: new (el: Element) => IRootScope;
+    ElementScope: new (el: Element) => IElementScope;
+    constructor(options?: {
+        sanitizer?: HTMLSanitizer;
+    });
+    defineComponent(name: string, comp: Component): void;
+    watch(toWatch: () => any, handler: (val: unknown, lastVal: unknown) => void | Promise<void>): subs;
+    run(el: Node, code: string, scopes: IElementScope[]): any;
+    defineDirective(name: string, callback: (exce: DirectiveExec, scopes: IElementScope[]) => subs): void;
+    init(elem?: Element, component?: string, alreadyPreprocessed?: boolean): {
+        cancel: () => void;
+    };
+}
 export {};

@@ -1,3 +1,4 @@
+import HTMLSanitizer from "./HTMLSanitizer";
 declare type sortCallback = (a: Element, b: Element) => any;
 declare type search = (value?: Element, index?: number) => any;
 interface EqEventListener<T> {
@@ -10,27 +11,30 @@ export interface DelegateObject {
     one<T extends Event>(elem: Element, event: string, callback: EqEventListener<T>): () => void;
     off(): void;
 }
-export declare const defaultDelegateObject: DelegateObject;
-export declare class ElementCollection {
-    constructor(item?: number | Element, ...items: Element[]);
-    get size(): number;
+export interface EqEvent {
+    isEqEvent: boolean;
+    stoppedImmediatePropagation: boolean;
+    stoppedPropagation: boolean;
+}
+export interface IElementCollection {
+    get length(): number;
     get $elements(): Element[];
     [Symbol.iterator](): IterableIterator<Element>;
     forEach(cb: (elem?: Element, i?: number) => void): void;
     map<T>(cb: (elem?: Element, i?: number) => T): T[];
-    filter(selector: wrapType | ((elem?: Element, i?: number) => boolean)): ElementCollection;
+    filter(selector: wrapType | ((elem?: Element, i?: number) => boolean)): IElementCollection;
     some(cb: (elem: Element, i: number) => boolean): boolean;
     every(cb: (elem: Element, i: number) => boolean): boolean;
-    slice(start?: number, end?: number): ElementCollection;
+    slice(start?: number, end?: number): IElementCollection;
     sort(callback?: sortCallback): this;
     reverse(): this;
-    unique(): ElementCollection;
+    unique(): IElementCollection;
     toArray(): Element[];
     toSet(): Set<Element>;
     is(selector: wrapType): boolean;
-    not(selector: wrapType): ElementCollection;
-    has(selector: wrapType): ElementCollection;
-    find(selector: wrapType | search): ElementCollection;
+    not(selector: wrapType): IElementCollection;
+    has(selector: wrapType): IElementCollection;
+    find(selector: wrapType | search): IElementCollection;
     on<T extends Event>(events: {
         [ev: string]: EqEventListener<T>;
     }, options?: AddEventListenerOptions): this;
@@ -66,30 +70,29 @@ export declare class ElementCollection {
         [clas: string]: boolean;
     }, force?: boolean): this;
     hasClass(name: string): boolean;
-    once(identifier: any): ElementCollection;
+    once(identifier: any): IElementCollection;
     get(index: number): Element;
     index(selector?: wrapType): number;
-    first(): ElementCollection;
-    last(): ElementCollection;
-    eq(index: number): ElementCollection;
-    next(selector?: string): ElementCollection;
-    nextUntil(selector?: string | Element, filter?: string): ElementCollection;
-    nextAll(selector?: string): ElementCollection;
-    prev(selector?: string): ElementCollection;
-    prevUntil(selector?: string | Element, filter?: string): ElementCollection;
-    prevAll(selector?: string): ElementCollection;
-    siblings(selector?: string): ElementCollection;
-    children(selector?: string): ElementCollection;
+    first(): IElementCollection;
+    last(): IElementCollection;
+    eq(index: number): IElementCollection;
+    next(selector?: string): IElementCollection;
+    nextUntil(selector?: string | Element, filter?: string): IElementCollection;
+    nextAll(selector?: string): IElementCollection;
+    prev(selector?: string): IElementCollection;
+    prevUntil(selector?: string | Element, filter?: string): IElementCollection;
+    prevAll(selector?: string): IElementCollection;
+    siblings(selector?: string): IElementCollection;
+    children(selector?: string): IElementCollection;
 }
-export declare const $document: ElementCollection;
-export interface EqEvent {
-    isEqEvent: boolean;
-    stoppedImmediatePropagation: boolean;
-    stoppedPropagation: boolean;
-}
-export declare type selector = Element | ElementCollection | NodeList | HTMLCollection | string | Set<Element>;
+export declare type selector = Element | IElementCollection | NodeList | HTMLCollection | string | Set<Element>;
 export declare type wrapType = selector | selector[];
-export declare function wrap(selector: wrapType, context?: ElementCollection): ElementCollection;
-export declare function getStore<T>(elem: Node, store: string, defaultValue?: T): T;
-export declare function deleteStore(elem: Element, store: string): boolean;
+export default function createClass(sanitizer: () => HTMLSanitizer): {
+    $document: IElementCollection;
+    getStore: <T>(elem: Node, store: string, defaultValue?: T) => T;
+    deleteStore: (elem: Element, store: string) => boolean;
+    ElementCollection: new (item?: number | Element, ...items: Element[]) => IElementCollection;
+    wrap: (selector: wrapType, context?: IElementCollection) => IElementCollection;
+    defaultDelegateObject: DelegateObject;
+};
 export {};
