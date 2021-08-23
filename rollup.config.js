@@ -7,13 +7,14 @@ import copy from "rollup-plugin-copy-assets";
 const extensions = ['.js', '.ts']
 
 export default {
-  input: ['src/Skope.ts', 'src/defaultInit.ts'],
+  input: ['src/Skope.ts', 'src/defaultInit.ts', 'src/HTMLSanitizer.ts'],
+  preserveModules: false,
   output: {
     dir: 'dist',
     name: 'Skope',
     format: 'es',
     exports: 'named',
-    sourcemap: true
+    sourcemap: true,
   },
   plugins: [
     copy({
