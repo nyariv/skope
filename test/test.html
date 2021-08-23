@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script deferred src="../dist/defaultInit.js" type="module"></script>
+  <script src="../dist/defaultInit.js" type="module"></script>
   <link rel="stylesheet" href="../dist/skopejs.css">
   <title>Scope.js Test</title>
   <style>
     body {font-family: Arial, Helvetica, sans-serif; font-size: 14px;}
-    .containers {display: flex}
+    .containers:not([s-cloak]) {display: flex}
     .containers > * {margin: 20px}
     .rating {width: 200px}
     [\@click] {cursor: pointer; user-select: none;}
@@ -16,8 +16,9 @@
     form {display: flex; width: 600px}
   </style>
 </head>
-<body s-app s-cloak>
-  <div class="containers">
+<body>
+  <div><button onclick="import('../dist/defaultInit.js').then((mod) => mod.cancel())">Cancel Skope</button></div>
+  <div skope s-cloak class="containers">
     <div class="rating" $offset="1" $range="[0]">
       <h2>Repeat</h2>
       <script type="skopejs">

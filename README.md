@@ -22,11 +22,11 @@ npm i skope
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script deferred src="https://cdn.jsdelivr.net/gh/nyariv/skope@latest/dist/defaultInit.js" type="module"></script>
+  <script src="https://cdn.jsdelivr.net/gh/nyariv/skope@latest/dist/defaultInit.js" type="module"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/nyariv/skope@latest/dist/skopejs.css">
   <meta charset="UTF-8">
 </head>
-  <body s-app s-cloak $my-var="'Hello World'">
+  <body skope s-cloak $my-var="'Hello World'">
     {{myVar}}
   </body>
 </html>
@@ -64,6 +64,16 @@ Trigger only once
   <div :class="{red: true}">this is red</div>
 ```
 
+### s-cloak
+
+This attribute is removed when the html is processed by skope. In the default stylesheet it is treated as `display: none`.
+
+```html
+  <div s-clock>
+    {{'this is hidden while app is loading'}}
+  </div>
+```
+
 ### s-for
 
 ```html
@@ -80,6 +90,8 @@ Trigger only once
 ```
 
 ### s-show
+
+This attribute adds a class `.hide` if true. In the default stylesheet it is treated as `display: none`.
 
 ```html
   <div $var1="false">
@@ -141,7 +153,7 @@ Create a scope of html that does not inherit scopes from parent elements, and ha
 ```html
   <div $one="1">
     <div s-detached>
-      {{typeof one === 'undefined' ? 'detached' : 'not detached}}
+      {{typeof one === 'undefined' ? 'detached' : 'not detached'}}
     <div>
   <div>
 ```
@@ -153,7 +165,7 @@ An element with this attribute will not execute js in its nested elements, and w
 ```html
   <div s-static>
     <div $one="1">
-      {{typeof one === 'undefined' ? 'detached' : 'not detached}}
+      {{typeof one === 'undefined' ? 'detached' : 'not detached'}}
     <div>
   <div>
 ```
