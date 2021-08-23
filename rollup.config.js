@@ -3,6 +3,7 @@ import filesize from 'rollup-plugin-filesize';
 import resolve from '@rollup/plugin-node-resolve';
 import typescript from '@rollup/plugin-typescript';
 import copy from "rollup-plugin-copy-assets";
+import commonjs from '@rollup/plugin-commonjs';
 
 const extensions = ['.js', '.ts']
 
@@ -17,6 +18,7 @@ export default {
     sourcemap: true,
   },
   plugins: [
+    commonjs(),
     copy({
       assets: [
         "src/skopejs.css",

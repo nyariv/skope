@@ -2,8 +2,7 @@
 
 import Sandbox from '@nyariv/sandboxjs';
 import createClass, { EqEvent, wrapType, DelegateObject } from './eQuery'
-import { IElementCollection } from './eQuery'
-
+import { IElementCollection } from './eQuery';
 import HTMLSanitizer from './HTMLSanitizer';
 
 const regVarName = /^\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*$/;
@@ -87,7 +86,7 @@ function walkText(s: string, endJs: string = null) {
 }
   
 const calls: (() => void)[] = [];
-let timer: number;
+let timer: any;
 function call(cb: () => void) {
   calls.push(cb);
   if (timer) return;
