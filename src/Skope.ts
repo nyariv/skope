@@ -108,6 +108,7 @@ interface IElementScope {
   $el: IElementCollection;
   $dispatch(eventType: string, detail?: any, bubbles?: boolean, cancelable?: boolean): void;
   $watch(cb: () => any, callback: (val: any, lastVal: any) => void): {unsubscribe: () => void};
+  $delay(ms: number): Promise<void>;
 }
 interface IRootScope extends IElementScope {
   $refs: {[name: string]: IElementCollection};
@@ -165,6 +166,9 @@ function initialize (skope: Skope) {
       const sub = getStore(this.$el.get(0), 'currentSubs', []);
       sub.push(subUnsubs);
       return { unsubscribe: () => unsubNested(subUnsubs) };
+    }
+    $delay(ms: number) {
+      return new Promise<void>((res) => setTimeout(res, ms));
     }
   }
 
@@ -238,7 +242,7 @@ function initialize (skope: Skope) {
   
   skope.defineDirective('ref', (exec: DirectiveExec, scopes: IElementScope[]) => {
     if (!exec.js.match(regVarName)) {
-      throw new Error('Invalid ref name: ' + exec.js);
+      throw createError('Invalid ref name: ' + exec.js, exec.element);
     }
     const name = getScope(skope, exec.element, [], {name: exec.js.trim()});
     skope.run(document, `$refs[name] = $wrap([...($refs[name] || []), $el])`, [...scopes, name]);
@@ -267,14 +271,16 @@ function initialize (skope: Skope) {
       const $form = skope.wrap(el.form);
       sub.push($form.delegate().on($form.get(0), 'reset', () => reset = !!setTimeout(change)));
     }
-    sub.push(skope.watch(watchRun(skope, scopes, exec.js.trim()), (val, lastVal) => {
-      if (val === last) return;
-      if (isContentEditable) {
-        $el.html(val + "");
-      } else {
-        $el.val(val as any);
-      }
-    }));
+    Promise.resolve().then(() => {
+      sub.push(skope.watch(watchRun(skope, scopes, exec.js.trim()), (val, lastVal) => {
+        if (val === last) return;
+        if (isContentEditable) {
+          $el.html(val + "");
+        } else {
+          $el.val(val as any);
+        }
+      }));
+    });
     return sub;
   });
   
@@ -285,6 +291,35 @@ function initialize (skope: Skope) {
         skope.wrap(exec.element).html(val);
       }
     });
+  });
+
+  skope.defineDirective('transition', (exec: DirectiveExec, scopes: IElementScope[]) => {
+    const $el = skope.wrap(exec.element);
+    $el.addClass('s-transition');
+    $el.addClass('s-transition-idle');
+    let lastPromise: Promise<unknown>;
+    return skope.watch(watchRun(skope, scopes, exec.js), (val, lastVal) => {
+      if (val === undefined || lastPromise !== val) {
+        $el.addClass('s-transition-idle');
+        $el.removeClass('s-transition-active');
+        $el.removeClass('s-transition-done');
+        $el.removeClass('s-transition-error');
+      }
+      if (val instanceof Promise) {
+        lastPromise = val;
+        $el.removeClass('s-transition-idle');
+        $el.addClass('s-transition-active');
+        val.then(() => {
+          if(lastPromise !== val) return;
+          $el.removeClass('s-transition-active');
+          $el.addClass('s-transition-done');
+        }, () => {
+          if(lastPromise !== val) return;
+          $el.removeClass('s-transition-active');
+          $el.addClass('s-transition-error');
+        })
+      }
+    })
   });
 }
 
@@ -312,8 +347,12 @@ function getScopes(skope: Skope, element: Element, subs: subs = [], newScope?: {
 }
 
 
-function watchRun(skope: Skope, scopes: IElementScope[], code: string) {
+function watchRun(skope: Skope, scopes: IElementScope[], code: string): () => unknown {
   return () => skope.run(getRootElement(scopes), 'return ' + code, scopes);
+}
+
+function watchRunAsync(skope: Skope, scopes: IElementScope[], code: string): () =>Promise<unknown> {
+  return () => skope.runAsync(getRootElement(scopes), 'return ' + code, scopes);
 }
 
 function preprocessHTML(skope: Skope, html: Node|string): Node {
@@ -365,6 +404,12 @@ function pushScope(skope: Skope, scopes: IElementScope[], elem: Element, sub: su
   return scopes;
 }
 
+function createError(msg: string, el: Element) {
+  const err = new Error(msg);
+  (err as any).element = el;
+  return err;
+}
+
 function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject) {
   let currentSubs: subs = [];
   parentSubs.push(currentSubs);
@@ -414,7 +459,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
       element.removeAttribute('s-for');
       let split = at.split(' in ');
       if (split.length < 2) {
-        throw new Error('In valid s-for directive: ' + at)
+        throw createError('In valid s-for directive: ' + at, element);
       } else {
         exp = split.slice(1).join(' in ');
       }
@@ -426,7 +471,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
         value = varMatch[1];
       } else {
         const doubleMatch = varsExp.match(regKeyValName)
-        if (!doubleMatch) throw new Error('In valid s-for directive: ' + at)
+        if (!doubleMatch) throw createError('In valid s-for directive: ' + at, element);
         key = doubleMatch[1];
         value = doubleMatch[2];
       }
@@ -435,7 +480,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
         currentSubs.push(del.off);
         const nestedSubs: subs = [];
         currentSubs.push(nestedSubs);
-        currentSubs.push(skope.watch(watchRun(skope, scopes, exp), (val) => {
+        currentSubs.push(watchAsync(skope, watchRunAsync(skope, scopes, exp), (val) => {
           unsubNested(nestedSubs);
           items.forEach((item) => {
             item.remove(); // @TODO: optimize
@@ -466,6 +511,12 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
             }
           }
           runs.forEach((run) => run());
+        }, (err) => {
+          unsubNested(nestedSubs);
+          items.forEach((item) => {
+            item.remove(); // @TODO: optimize
+          });
+          items.clear();
         }));
       });
       return;
@@ -496,7 +547,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
           };
         }
         ready(scopes => {
-          skope.run(getRootElement(scopes), `let ${name} = ${att.nodeValue}`, scopes);
+          skope.runAsync(getRootElement(scopes), `let ${name} = ${att.nodeValue}`, scopes);
         });
       }
     }
@@ -531,11 +582,26 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
             }));
           });
         } else if (att.nodeName.startsWith('@')) {
-          const parts = att.nodeName.slice(1).split('.');
+          const transitionParts = att.nodeName.split('$');
+          const parts = transitionParts[0].slice(1).split('.');
+          const transitionVar = transitionParts[1]?.replace(/\-([\w\$])/g, (match, letter) => letter.toUpperCase());;
+          if (transitionVar) {
+            if (!regVarName.test(transitionVar)) {
+              console.error(`Invalid variable name in attribute ${att.nodeName}`);
+              continue;
+            }
+          }
           ready((scopes) => {
+            let trans: Promise<unknown>;
             const ev = (e: EqEvent) => {
-              skope.run(getRootElement(scopes), att.nodeValue, pushScope(skope, scopes, element, currentSubs, {$event: e}));
-            };
+              trans = skope.runAsync(getRootElement(scopes), att.nodeValue, pushScope(skope, scopes, element, currentSubs, {$event: e}));
+              if (transitionVar) {
+                skope.run(getRootElement(scopes), `${transitionVar} = trans`, pushScope(skope, scopes, element, currentSubs, {trans}));
+              }
+            }
+            if (transitionVar) {
+              skope.run(getRootElement(scopes), `if (typeof ${transitionVar} === 'undefined') var ${transitionVar}`, scopes);
+            }
             if (parts[1] === 'once') {
               currentSubs.push(delegate.one(element, parts[0], ev));
             } else {
@@ -574,8 +640,10 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
             found = true;
             const placeholder = document.createTextNode("");
             ready((scopes) => {
-              currentSubs.push(skope.watch(watchRun(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
+              currentSubs.push(watchAsync(skope, watchRunAsync(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
                 placeholder.textContent = val + "";
+              }, (err) => {
+                placeholder.textContent = "";
               }));
               return scopes;
             });
@@ -597,6 +665,16 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
       for (let cb of execSteps) cb(scopes);
     });
   }
+}
+
+function watchAsync<T>(skope: Skope, toWatch: () => Promise<T>, handler: (val: T, lastVal: T|undefined) => void|Promise<void>, errorCb: (err: unknown) => void): subs {
+  let lastVal: T;
+  return skope.watch(toWatch, (val) => {
+    val.then(async (v) => {
+      handler(v, lastVal);
+      lastVal = v;
+    }, errorCb);
+  });
 }
 
 export default class Skope {
@@ -634,7 +712,7 @@ export default class Skope {
     }
   }
   
-  watch(toWatch: () => any, handler: (val: unknown, lastVal: unknown) => void|Promise<void>): subs {
+  watch<T>(toWatch: () => T, handler: (val: T, lastVal: T|undefined) => void|Promise<void>): subs {
     const watchGets: Map<any, Set<string>> = new Map();
     const subUnsubs: subs = [];
     let lastVal: any;
@@ -689,12 +767,35 @@ export default class Skope {
     return subUnsubs;
   }
 
-  run(el: Node, code: string, scopes: IElementScope[]) {
+  run(el: Node, code: string, scopes: IElementScope[]): unknown {
     el = el || document;
     let codes = this.sandboxCache.get(el) || {};
     this.sandboxCache.set(el, codes);
-    codes[code] = codes[code] || this.sandbox.compile(code);
-    return codes[code](...scopes);
+    const key = 'sync:' + code;
+    codes[key] = codes[key] || this.sandbox.compile(code);
+    try {
+      return codes[key](...scopes);
+    } catch (err) {
+      const elem = scopes[scopes.length - 1]?.$el.get(0);
+      err.element = elem;
+      console.error(err);
+      return undefined;
+    };
+  }
+
+  runAsync(el: Node, code: string, scopes: IElementScope[]): Promise<unknown> {
+    el = el || document;
+    let codes = this.sandboxCache.get(el) || {};
+    this.sandboxCache.set(el, codes);
+    const key = 'async:' + code;
+    codes[key] = codes[key] || this.sandbox.compileAsync(code);
+    return codes[key](...scopes).catch((err: unknown) => {
+      const elem = scopes[scopes.length - 1]?.$el.get(0);
+      if (err instanceof Error) {
+        (err as any).element = elem;
+      }
+      throw err;
+    });
   }
   
   defineDirective(name: string, callback: (exce: DirectiveExec, scopes: IElementScope[]) => subs) {

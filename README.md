@@ -55,6 +55,14 @@ Trigger only once
   <button $var1="false" @click.once="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
 ```
 
+Save event callback promise to variable
+
+```html
+  <div $var1="0">
+    <button  @click$var1="await $delay(500); return Math.random()">{{'event value: ' + await var1}}</button>
+  </div>
+```
+
 ### Attributes
 
 ```html
@@ -97,6 +105,61 @@ This attribute adds a class `.hide` if true. In the default stylesheet it is tre
   <div $var1="false">
     <button @click="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
     <div s-show="var1"> Hello World </div>
+  </div>
+```
+
+### s-transition
+
+This attribute will add classes based on a promise set to a variable, for each of its promise state:
+
+- `.s-transition` - always set for this directive
+- `.s-transition-idle` - set when the variable is undefined or is not a promise
+- `.s-transition-active` - set when the promise did not resolve or reject yet
+- `.s-transition-done` - set when the promise is resolved
+- `.s-transition.error` - set when the promise rejected
+
+```html
+  <div $var1>
+    <style>
+      .s-transition span {
+        display: none;
+      }
+      .s-transition-idle .idle {
+        display: block;
+      }
+      .s-transition-active .active {
+        display: block;
+      }
+      .s-transition-done .done {
+        color: green;
+        display: block;
+      }
+      .s-transition-error .error {
+        color: red;
+        display: block;
+      }
+
+      .loader {
+        border: 2px solid white; /* Light grey */
+        border-top: 2px solid #ccc; /* Blue */
+        border-radius: 50%;
+        width: 14px;
+        height: 14px;
+        animation: spin .4s linear infinite;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+    <button @click$var1="await $delay(2000); if(Math.random() < .5) throw new Error('error')">Trigger transition</button>
+    <div s-transition="var1"> 
+      <span class="idle">Idle</span>
+      <span class="active"><div class="loader"></div></span>
+      <span class="done">Done</span>
+      <span class="error">Error</span>
+    </div>
   </div>
 ```
 
