@@ -10,6 +10,7 @@ interface IElementScope {
     $watch(cb: () => any, callback: (val: any, lastVal: any) => void): {
         unsubscribe: () => void;
     };
+    $delay(ms: number): Promise<void>;
 }
 interface IRootScope extends IElementScope {
     $refs: {
@@ -50,8 +51,9 @@ export default class Skope {
         sanitizer?: HTMLSanitizer;
     });
     defineComponent(name: string, comp: Component): void;
-    watch(toWatch: () => any, handler: (val: unknown, lastVal: unknown) => void | Promise<void>): subs;
-    run(el: Node, code: string, scopes: IElementScope[]): any;
+    watch<T>(toWatch: () => T, handler: (val: T, lastVal: T | undefined) => void | Promise<void>): subs;
+    run(el: Node, code: string, scopes: IElementScope[]): unknown;
+    runAsync(el: Node, code: string, scopes: IElementScope[]): Promise<unknown>;
     defineDirective(name: string, callback: (exce: DirectiveExec, scopes: IElementScope[]) => subs): void;
     init(elem?: Element, component?: string, alreadyPreprocessed?: boolean): {
         cancel: () => void;

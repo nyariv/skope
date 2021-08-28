@@ -95,15 +95,15 @@
     <div s-html="html"></div>
   </div>
 
-  <div $var1e="1">
+  <div $var1="1">
     <div s-detached>
       {{typeof one === 'undefined' ? 'detached' : 'not detached'}}
     </div>
   </div>
   
   <div s-static>
-    <div $var1e="1">
-      {{typeof one === 'undefined' ? 'detached' : 'not detached'}}
+    <div $this-is-static="not static">
+      {{thisIsStatic}}
     </div>
   </div>
 

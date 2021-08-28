@@ -223,9 +223,20 @@ export default class HTMLSanitizer {
   observeAttribute(parent: Element, att: string, cb: (elem: Element) => void, staticHtml: boolean, persistant = false): {cancel: () => void} {
     const subs: Set<() => void> = new Set();
 
+    let selector = `[${att}]:not([${att}] [${att}])`;
+    const sanitize = (elem: Element) => {
+      if (staticHtml) {
+        for (let el of elem.children) {
+          this.sanitizeHTML(el, staticHtml);
+        }
+      } else {
+        this.sanitizeHTML(elem, staticHtml);
+      }
+    }
+
     function observeLoad(elem: Element, staticHtml: boolean) {
       return new Promise<Element>((resolve) => {
-        this.sanitizeHTML(elem, staticHtml);
+        sanitize(elem);
         const observer = new MutationObserver((muts) => {
           for (let mut of muts) {
             for (let target of mut.addedNodes) {
@@ -260,13 +271,13 @@ export default class HTMLSanitizer {
           for (let elem of mut.addedNodes) {
             if (elem instanceof Element) {
               if (document.readyState === 'loading') {
-                if (!isFound(elem) && elem.matches(`[${att}]:not([${att}] [${att}])`)) {
+                if (!isFound(elem) && elem.matches(selector)) {
                   found.add(elem);
                   observeLoad(elem, staticHtml).then((el) => {
                     cb(el);
                   })
                 } else {
-                  for (let el of elem.querySelectorAll(`[${att}]:not([${att}] [${att}])`)) {
+                  for (let el of elem.querySelectorAll(selector)) {
                     if (!isFound(el)) {
                       found.add(el);
                       observeLoad(el, staticHtml).then((el) => {
@@ -275,12 +286,12 @@ export default class HTMLSanitizer {
                     }
                   }
                 }
-              } else if (elem.matches(`[${att}]:not([${att}] [${att}])`)) {
-                this.sanitizeHTML(elem, staticHtml);
+              } else if (elem.matches(selector)) {
+                sanitize(elem);
                 cb(elem);
               } else {
-                for (let el of elem.querySelectorAll(`[${att}]:not([${att}] [${att}])`)) {
-                  this.sanitizeHTML(el, staticHtml);
+                for (let el of elem.querySelectorAll(selector)) {
+                  sanitize(elem);
                   cb(el);
                 }
               }
@@ -301,12 +312,12 @@ export default class HTMLSanitizer {
       subs.add(sub);
     }
   
-    if (parent.matches(`[${att}]:not([${att}] [${att}])`)) {
-      this.sanitizeHTML(parent, staticHtml);
-        cb(parent);
+    if (parent.matches(selector)) {
+      sanitize(parent);
+      cb(parent);
     } else {
-      for (let el of parent.querySelectorAll(`[${att}]:not([${att}] [${att}])`)) {
-        this.sanitizeHTML(el, staticHtml);
+      for (let el of parent.querySelectorAll(selector)) {
+        sanitize(el);
         cb(el);
       }
     }

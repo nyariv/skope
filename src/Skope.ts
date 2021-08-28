@@ -143,6 +143,10 @@ function runDirective(skope: Skope, exec: DirectiveExec, scopes: IElementScope[]
   return [];
 }
 
+function createErrorCb(el: Element) {
+  return (err: Error) => createError(err?.message, el);
+}
+
 function initialize (skope: Skope) {
   const eQuery = createClass(() => skope.sanitizer);
   const { wrap, ElementCollection, getStore, deleteStore, $document, defaultDelegateObject} = eQuery;
@@ -162,7 +166,7 @@ function initialize (skope: Skope) {
     }
   
     $watch(cb: () => any, callback: (val: any, lastVal: any) => void): {unsubscribe: () => void} {
-      const subUnsubs = skope.watch(cb, callback);
+      const subUnsubs = skope.watch(cb, callback, createErrorCb(this.$el.get(0)));
       const sub = getStore(this.$el.get(0), 'currentSubs', []);
       sub.push(subUnsubs);
       return { unsubscribe: () => unsubNested(subUnsubs) };
@@ -218,6 +222,7 @@ function initialize (skope: Skope) {
     };
     return contentElem.content;
   };
+
   skope.RootScope = RootScope;
   skope.ElementScope = ElementScope;
   skope.prototypeWhitelist.set(FileList, new Set());
@@ -230,14 +235,14 @@ function initialize (skope: Skope) {
   skope.defineDirective('show', (exec: DirectiveExec, scopes: IElementScope[]) => {
     return skope.watch(watchRun(skope, scopes, exec.js), (val, lastVal) => {
       exec.element.classList.toggle('hide', !val);
-    });
+    }, createErrorCb(exec.element));
   });
   
   skope.defineDirective('text', (exec: DirectiveExec, scopes: IElementScope[]) => {
     return skope.watch(watchRun(skope, scopes, exec.js), (val, lastVal) => {
       //@ts-ignore
       skope.wrap(exec.element).text(val + "");
-    });
+    }, createErrorCb(exec.element));
   });
   
   skope.defineDirective('ref', (exec: DirectiveExec, scopes: IElementScope[]) => {
@@ -262,8 +267,12 @@ function initialize (skope: Skope) {
     let reset = false;
     const change = () => {
       last = !isContentEditable ? $el.val() : $el.html();
-      skope.run(getRootElement(scopes), exec.js.trim() + ' = ($$value === undefined && !reset) ? ' + exec.js.trim() + ' : $$value', pushScope(skope, scopes, el, exec.subs, {$$value: last, reset}));
-      reset = false;
+      try {
+        skope.run(getRootElement(scopes), exec.js.trim() + ' = ($$value === undefined && !reset) ? ' + exec.js.trim() + ' : $$value', pushScope(skope, scopes, el, exec.subs, {$$value: last, reset}));
+        reset = false;
+      } catch (err) {
+        createError(err?.message, exec.element);
+      }
     }
     const sub: subs = [];
     sub.push(exec.delegate.on(el, 'input', change));
@@ -279,7 +288,7 @@ function initialize (skope: Skope) {
         } else {
           $el.val(val as any);
         }
-      }));
+      }, createErrorCb(exec.element)));
     });
     return sub;
   });
@@ -290,7 +299,7 @@ function initialize (skope: Skope) {
         //@ts-ignore
         skope.wrap(exec.element).html(val);
       }
-    });
+    }, createErrorCb(exec.element));
   });
 
   skope.defineDirective('transition', (exec: DirectiveExec, scopes: IElementScope[]) => {
@@ -319,7 +328,7 @@ function initialize (skope: Skope) {
           $el.addClass('s-transition-error');
         })
       }
-    })
+    }, createErrorCb(exec.element))
   });
 }
 
@@ -366,6 +375,11 @@ function preprocessHTML(skope: Skope, html: Node|string): Node {
   } else {
     return html;
   }
+  for (let el of elem.querySelectorAll('[s-static]:not([s-static] [s-static])')) {
+    for (let child of el.children) {
+      skope.sanitizer.sanitizeHTML(elem, true);
+    }
+  }
   skope.sanitizer.sanitizeHTML(elem);
   return elem;
 }
@@ -404,9 +418,10 @@ function pushScope(skope: Skope, scopes: IElementScope[], elem: Element, sub: su
   return scopes;
 }
 
-function createError(msg: string, el: Element) {
+function createError(msg: string, el: Node) {
   const err = new Error(msg);
   (err as any).element = el;
+  console.error(err, el);
   return err;
 }
 
@@ -421,7 +436,6 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
       const comment = document.createComment('s-if');
       let ifElem: Element;
       const at = element.getAttribute('s-if');
-      element.removeAttribute('s-if');
       element.before(comment);
       element.remove();
       skope.deleteStore(element, 'currentSubs');
@@ -429,10 +443,11 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
         skope.getStore<subs>(comment, 'currentSubs', currentSubs);
         const nestedSubs: subs = [];
         currentSubs.push(nestedSubs)
-        currentSubs.push(skope.watch(watchRun(skope, scopes, at), (val, lastVal) => {
+        currentSubs.push(watchAsync(skope, watchRunAsync(skope, scopes, at), (val, lastVal) => {
           if (val) {
             if (!ifElem) {
               ifElem = element.cloneNode(true) as Element;
+              ifElem.removeAttribute('s-if');
               const processed = processHTML(skope, ifElem, nestedSubs, delegate);
               comment.after(processed.elem);
               processed.run(pushScope(skope, scopes, ifElem, nestedSubs));
@@ -443,6 +458,13 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
               ifElem = undefined;
               unsubNested(nestedSubs);
             }
+          }
+        }, (err: Error) => {
+          createError(err?.message || 'error', element);
+          if (ifElem) {
+            ifElem.remove();
+            ifElem = undefined;
+            unsubNested(nestedSubs);
           }
         }));
       });
@@ -456,7 +478,6 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
       const items = new Set<Element>();
       let exp: string;
       const at = element.getAttribute('s-for');
-      element.removeAttribute('s-for');
       let split = at.split(' in ');
       if (split.length < 2) {
         throw createError('In valid s-for directive: ' + at, element);
@@ -494,6 +515,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
             if (key) scope[key] = i;
             if (value) scope[value] = item;
             const elem = element.cloneNode(true) as Element;
+            elem.removeAttribute('s-for');
             const processed = processHTML(skope, elem, forSubs, del);
             comment.before(processed.elem);
             items.add(elem);
@@ -511,7 +533,8 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
             }
           }
           runs.forEach((run) => run());
-        }, (err) => {
+        }, (err: Error) => {
+          createError(err?.message || 'error', element);
           unsubNested(nestedSubs);
           items.forEach((item) => {
             item.remove(); // @TODO: optimize
@@ -534,7 +557,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
       if (att.nodeName.startsWith("$")) {
         const name = att.nodeName.substring(1).replace(/\-([\w\$])/g, (match, letter) => letter.toUpperCase());
         if (!name.match(regVarName)) {
-          console.error(`Invalid variable name in attribute ${att.nodeName}`);
+          createError(`Invalid variable name in attribute ${att.nodeName}`, element);
           continue;
         };
         if (!elementScopeAdded) {
@@ -547,14 +570,18 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
           };
         }
         ready(scopes => {
-          skope.runAsync(getRootElement(scopes), `let ${name} = ${att.nodeValue}`, scopes);
+          skope.runAsync(getRootElement(scopes), `let ${name} = ${att.nodeValue}`, scopes).catch(createErrorCb(element));
         });
       }
     }
     if (element instanceof HTMLScriptElement) {
       if (element.type === 'skopejs') {
         ready((scopes) => {
-          skope.run(getRootElement(scopes), element.innerHTML, scopes);
+          try {
+            skope.run(getRootElement(scopes), element.innerHTML, scopes);
+          } catch (err) {
+            createError(err?.message, element);
+          }
         });
       } else {
         element.remove();
@@ -579,7 +606,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
               } else {
                 $element.attr(at, val + "");
               }
-            }));
+            }, createErrorCb(element)));
           });
         } else if (att.nodeName.startsWith('@')) {
           const transitionParts = att.nodeName.split('$');
@@ -587,7 +614,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
           const transitionVar = transitionParts[1]?.replace(/\-([\w\$])/g, (match, letter) => letter.toUpperCase());;
           if (transitionVar) {
             if (!regVarName.test(transitionVar)) {
-              console.error(`Invalid variable name in attribute ${att.nodeName}`);
+              createError(`Invalid variable name in attribute ${att.nodeName}`, element);
               continue;
             }
           }
@@ -596,7 +623,11 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
             const ev = (e: EqEvent) => {
               trans = skope.runAsync(getRootElement(scopes), att.nodeValue, pushScope(skope, scopes, element, currentSubs, {$event: e}));
               if (transitionVar) {
-                skope.run(getRootElement(scopes), `${transitionVar} = trans`, pushScope(skope, scopes, element, currentSubs, {trans}));
+                try {
+                  skope.run(getRootElement(scopes), `${transitionVar} = trans`, pushScope(skope, scopes, element, currentSubs, {trans}));
+                } catch (err) {
+                  createError(err?.message, element);
+                }
               }
             }
             if (transitionVar) {
@@ -712,7 +743,7 @@ export default class Skope {
     }
   }
   
-  watch<T>(toWatch: () => T, handler: (val: T, lastVal: T|undefined) => void|Promise<void>): subs {
+  watch<T>(toWatch: () => T, handler: (val: T, lastVal: T|undefined) => void|Promise<void>, errorCb?: (err: Error) => void): subs {
     const watchGets: Map<any, Set<string>> = new Map();
     const subUnsubs: subs = [];
     let lastVal: any;
@@ -740,7 +771,10 @@ export default class Skope {
         val = toWatch();
       } catch (err) {
         g.unsubscribe();
-        throw err;
+        if (errorCb) {
+          errorCb(err);
+        }
+        return;
       }
       g.unsubscribe();
       for (let item of watchGets) {
@@ -760,7 +794,14 @@ export default class Skope {
       if (val !== lastVal) {
         const temp = lastVal;
         lastVal = val;
-        handler(val, temp);
+        try {
+          handler(val, temp);
+        } catch (err) {
+          if (errorCb) {
+            errorCb(err);
+          }
+          return;
+        }
       }
     }
     digest();
@@ -773,14 +814,7 @@ export default class Skope {
     this.sandboxCache.set(el, codes);
     const key = 'sync:' + code;
     codes[key] = codes[key] || this.sandbox.compile(code);
-    try {
-      return codes[key](...scopes);
-    } catch (err) {
-      const elem = scopes[scopes.length - 1]?.$el.get(0);
-      err.element = elem;
-      console.error(err);
-      return undefined;
-    };
+    return codes[key](...scopes);
   }
 
   runAsync(el: Node, code: string, scopes: IElementScope[]): Promise<unknown> {
@@ -788,7 +822,11 @@ export default class Skope {
     let codes = this.sandboxCache.get(el) || {};
     this.sandboxCache.set(el, codes);
     const key = 'async:' + code;
-    codes[key] = codes[key] || this.sandbox.compileAsync(code);
+    try {
+      codes[key] = codes[key] || this.sandbox.compileAsync(code);
+    } catch (err) {
+      return Promise.reject(err);
+    }
     return codes[key](...scopes).catch((err: unknown) => {
       const elem = scopes[scopes.length - 1]?.$el.get(0);
       if (err instanceof Error) {
@@ -804,6 +842,12 @@ export default class Skope {
   
   init(elem?: Element, component?: string, alreadyPreprocessed = false): {cancel: () => void} {
     const subs: subs = [];
+  
+    if (!alreadyPreprocessed) {
+      let sub2 = this.sanitizer.observeAttribute(elem || document.documentElement, 's-static', () => {}, true, true);
+      subs.push(sub2.cancel);
+    }
+    
     let sub = this.sanitizer.observeAttribute(elem || document.documentElement, 'skope', (el) => {
       const comp = component || el.getAttribute('skope');
       const scope = getScope(this, el, subs, this.components[comp] || {}, true);
@@ -813,11 +857,6 @@ export default class Skope {
     }, false);
 
     subs.push(sub.cancel);
-  
-    if (!alreadyPreprocessed) {
-      sub = this.sanitizer.observeAttribute(elem || document.documentElement, 's-static', () => {}, true, true);
-      subs.push(sub.cancel);
-    }
 
     return {
       cancel() {

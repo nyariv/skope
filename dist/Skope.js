@@ -1,5 +1,41 @@
 import HTMLSanitizer from './HTMLSanitizer.js';
 
+function asyncGeneratorStep(gen, resolve, reject, _next, _throw, key, arg) {
+  try {
+    var info = gen[key](arg);
+    var value = info.value;
+  } catch (error) {
+    reject(error);
+    return;
+  }
+
+  if (info.done) {
+    resolve(value);
+  } else {
+    Promise.resolve(value).then(_next, _throw);
+  }
+}
+
+function _asyncToGenerator(fn) {
+  return function () {
+    var self = this,
+        args = arguments;
+    return new Promise(function (resolve, reject) {
+      var gen = fn.apply(self, args);
+
+      function _next(value) {
+        asyncGeneratorStep(gen, resolve, reject, _next, _throw, "next", value);
+      }
+
+      function _throw(err) {
+        asyncGeneratorStep(gen, resolve, reject, _next, _throw, "throw", err);
+      }
+
+      _next(undefined);
+    });
+  };
+}
+
 function getDefaultExportFromCjs (x) {
 	return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, 'default') ? x['default'] : x;
 }
@@ -1209,7 +1245,7 @@ var Sandbox$1 = {};
     });
   });
   setLispType(['void', 'await'], (constants, type, part, res, expect, ctx) => {
-    const extract = restOfExp(constants, part.substring(res[0].length), [/^[^\s\.\w\$]/]);
+    const extract = restOfExp(constants, part.substring(res[0].length), [/^([^\s\.\?\w\$]|\?[^\.])/]);
     ctx.lispTree = lispify(constants, part.substring(res[0].length + extract.length), expectTypes[expect].next, new Lisp({
       op: type,
       a: lispify(constants, extract)
@@ -2658,8 +2694,8 @@ var Sandbox$1 = {};
 
       done(undefined, new a(...b));
     },
-    'throw': (exec, done, ticks, a) => {
-      done(a);
+    'throw': (exec, done, ticks, a, b) => {
+      done(b);
     },
     'multi': (exec, done, ticks, a) => done(undefined, a.pop())
   };
@@ -2959,7 +2995,7 @@ var Sandbox$1 = {};
       } else if ((_a = context.ctx.prototypeWhitelist) === null || _a === void 0 ? void 0 : _a.has(Promise.prototype)) {
         execAsync(ticks, tree.a, scope, context, async (e, r) => {
           if (e) done(e);else try {
-            done(undefined, await r);
+            done(undefined, await valueOrProp(r));
           } catch (err) {
             done(err);
           }
@@ -4300,7 +4336,6 @@ function createClass(sanitizer) {
   };
 }
 
-console.log(Sandbox);
 var regVarName = /^\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*$/;
 var regKeyValName = /^\s*\(([a-zA-Z$_][a-zA-Z$_\d]*)\s*,\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*\)$/;
 
@@ -4462,6 +4497,10 @@ function initialize(skope) {
       };
     }
 
+    $delay(ms) {
+      return new Promise(res => setTimeout(res, ms));
+    }
+
   }
 
   class RootScope extends ElementScope {
@@ -4549,7 +4588,7 @@ function initialize(skope) {
   });
   skope.defineDirective('ref', (exec, scopes) => {
     if (!exec.js.match(regVarName)) {
-      throw new Error('Invalid ref name: ' + exec.js);
+      throw createError('Invalid ref name: ' + exec.js, exec.element);
     }
 
     var name = getScope(skope, exec.element, [], {
@@ -4589,21 +4628,52 @@ function initialize(skope) {
       sub.push($form.delegate().on($form.get(0), 'reset', () => reset = !!setTimeout(change)));
     }
 
-    sub.push(skope.watch(watchRun(skope, scopes, exec.js.trim()), (val, lastVal) => {
-      if (val === last) return;
+    Promise.resolve().then(() => {
+      sub.push(skope.watch(watchRun(skope, scopes, exec.js.trim()), (val, lastVal) => {
+        if (val === last) return;
 
-      if (isContentEditable) {
-        $el.html(val + "");
-      } else {
-        $el.val(val);
-      }
-    }));
+        if (isContentEditable) {
+          $el.html(val + "");
+        } else {
+          $el.val(val);
+        }
+      }));
+    });
     return sub;
   });
   skope.defineDirective('html', (exec, scopes) => {
     return skope.watch(watchRun(skope, scopes, exec.js), (val, lastVal) => {
       if (val instanceof Node || typeof val === 'string' || val instanceof this.ElementCollection) {
         skope.wrap(exec.element).html(val);
+      }
+    });
+  });
+  skope.defineDirective('transition', (exec, scopes) => {
+    var $el = skope.wrap(exec.element);
+    $el.addClass('s-transition');
+    $el.addClass('s-transition-idle');
+    var lastPromise;
+    return skope.watch(watchRun(skope, scopes, exec.js), (val, lastVal) => {
+      if (val === undefined || lastPromise !== val) {
+        $el.addClass('s-transition-idle');
+        $el.removeClass('s-transition-active');
+        $el.removeClass('s-transition-done');
+        $el.removeClass('s-transition-error');
+      }
+
+      if (val instanceof Promise) {
+        lastPromise = val;
+        $el.removeClass('s-transition-idle');
+        $el.addClass('s-transition-active');
+        val.then(() => {
+          if (lastPromise !== val) return;
+          $el.removeClass('s-transition-active');
+          $el.addClass('s-transition-done');
+        }, () => {
+          if (lastPromise !== val) return;
+          $el.removeClass('s-transition-active');
+          $el.addClass('s-transition-error');
+        });
       }
     });
   });
@@ -4640,6 +4710,10 @@ function getScopes(skope, element) {
 
 function watchRun(skope, scopes, code) {
   return () => skope.run(getRootElement(scopes), 'return ' + code, scopes);
+}
+
+function watchRunAsync(skope, scopes, code) {
+  return () => skope.runAsync(getRootElement(scopes), 'return ' + code, scopes);
 }
 
 function preprocessHTML(skope, html) {
@@ -4693,6 +4767,12 @@ function pushScope(skope, scopes, elem, sub, vars) {
   scopes = scopes.slice();
   scopes.push(scope);
   return scopes;
+}
+
+function createError(msg, el) {
+  var err = new Error(msg);
+  err.element = el;
+  return err;
 }
 
 function walkTree(skope, element, parentSubs, ready, delegate) {
@@ -4755,7 +4835,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
         var split = _at.split(' in ');
 
         if (split.length < 2) {
-          throw new Error('In valid s-for directive: ' + _at);
+          throw createError('In valid s-for directive: ' + _at, element);
         } else {
           exp = split.slice(1).join(' in ');
         }
@@ -4769,7 +4849,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
           value = varMatch[1];
         } else {
           var doubleMatch = varsExp.match(regKeyValName);
-          if (!doubleMatch) throw new Error('In valid s-for directive: ' + _at);
+          if (!doubleMatch) throw createError('In valid s-for directive: ' + _at, element);
           key = doubleMatch[1];
           value = doubleMatch[2];
         }
@@ -4779,7 +4859,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
           currentSubs.push(del.off);
           var nestedSubs = [];
           currentSubs.push(nestedSubs);
-          currentSubs.push(skope.watch(watchRun(skope, scopes, exp), val => {
+          currentSubs.push(watchAsync(skope, watchRunAsync(skope, scopes, exp), val => {
             unsubNested(nestedSubs);
             items.forEach(item => {
               item.remove();
@@ -4818,6 +4898,12 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
             }
 
             runs.forEach(run => run());
+          }, err => {
+            unsubNested(nestedSubs);
+            items.forEach(item => {
+              item.remove();
+            });
+            items.clear();
           }));
         });
         return {
@@ -4858,7 +4944,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
           }
 
           ready(scopes => {
-            skope.run(getRootElement(scopes), "let ".concat(name, " = ").concat(att.nodeValue), scopes);
+            skope.runAsync(getRootElement(scopes), "let ".concat(name, " = ").concat(att.nodeValue), scopes);
           });
         }
       };
@@ -4904,14 +4990,38 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
               }));
             });
           } else if (_att.nodeName.startsWith('@')) {
-            var parts = _att.nodeName.slice(1).split('.');
+            var _transitionParts$;
+
+            var transitionParts = _att.nodeName.split('$');
+
+            var parts = transitionParts[0].slice(1).split('.');
+            var transitionVar = (_transitionParts$ = transitionParts[1]) === null || _transitionParts$ === void 0 ? void 0 : _transitionParts$.replace(/\-([\w\$])/g, (match, letter) => letter.toUpperCase());
+
+            if (transitionVar) {
+              if (!regVarName.test(transitionVar)) {
+                console.error("Invalid variable name in attribute ".concat(_att.nodeName));
+                return "continue";
+              }
+            }
 
             ready(scopes => {
+              var trans;
+
               var ev = e => {
-                skope.run(getRootElement(scopes), _att.nodeValue, pushScope(skope, scopes, element, currentSubs, {
+                trans = skope.runAsync(getRootElement(scopes), _att.nodeValue, pushScope(skope, scopes, element, currentSubs, {
                   $event: e
                 }));
+
+                if (transitionVar) {
+                  skope.run(getRootElement(scopes), "".concat(transitionVar, " = trans"), pushScope(skope, scopes, element, currentSubs, {
+                    trans
+                  }));
+                }
               };
+
+              if (transitionVar) {
+                skope.run(getRootElement(scopes), "if (typeof ".concat(transitionVar, " === 'undefined') var ").concat(transitionVar), scopes);
+              }
 
               if (parts[1] === 'once') {
                 currentSubs.push(delegate.one(element, parts[0], ev));
@@ -4934,7 +5044,9 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
         };
 
         for (var _att of element.attributes) {
-          _loop2(_att);
+          var _ret3 = _loop2(_att);
+
+          if (_ret3 === "continue") continue;
         }
       }
     }();
@@ -4960,8 +5072,10 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
             found = true;
             var placeholder = document.createTextNode("");
             ready(scopes => {
-              currentSubs.push(skope.watch(watchRun(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
+              currentSubs.push(watchAsync(skope, watchRunAsync(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
                 placeholder.textContent = val + "";
+              }, err => {
+                placeholder.textContent = "";
               }));
               return scopes;
             });
@@ -4990,6 +5104,22 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
       }
     });
   }
+}
+
+function watchAsync(skope, toWatch, handler, errorCb) {
+  var lastVal;
+  return skope.watch(toWatch, val => {
+    val.then( /*#__PURE__*/function () {
+      var _ref = _asyncToGenerator(function* (v) {
+        handler(v, lastVal);
+        lastVal = v;
+      });
+
+      return function (_x) {
+        return _ref.apply(this, arguments);
+      };
+    }(), errorCb);
+  });
 }
 
 class Skope {
@@ -5085,8 +5215,38 @@ class Skope {
     el = el || document;
     var codes = this.sandboxCache.get(el) || {};
     this.sandboxCache.set(el, codes);
-    codes[code] = codes[code] || this.sandbox.compile(code);
-    return codes[code](...scopes);
+    var key = 'sync:' + code;
+    codes[key] = codes[key] || this.sandbox.compile(code);
+
+    try {
+      return codes[key](...scopes);
+    } catch (err) {
+      var _scopes;
+
+      var elem = (_scopes = scopes[scopes.length - 1]) === null || _scopes === void 0 ? void 0 : _scopes.$el.get(0);
+      err.element = elem;
+      console.error(err);
+      return undefined;
+    }
+  }
+
+  runAsync(el, code, scopes) {
+    el = el || document;
+    var codes = this.sandboxCache.get(el) || {};
+    this.sandboxCache.set(el, codes);
+    var key = 'async:' + code;
+    codes[key] = codes[key] || this.sandbox.compileAsync(code);
+    return codes[key](...scopes).catch(err => {
+      var _scopes2;
+
+      var elem = (_scopes2 = scopes[scopes.length - 1]) === null || _scopes2 === void 0 ? void 0 : _scopes2.$el.get(0);
+
+      if (err instanceof Error) {
+        err.element = elem;
+      }
+
+      throw err;
+    });
   }
 
   defineDirective(name, callback) {

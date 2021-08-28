@@ -227,10 +227,10 @@ An element with this attribute will not execute js in its nested elements, and w
 
 ```html
   <div s-static>
-    <div $one="1">
-      {{typeof one === 'undefined' ? 'detached' : 'not detached'}}
-    <div>
-  <div>
+    <div $this-is-static="not static">
+      {{thisIsStatic}}
+    </div>
+  </div>
 ```
 
 
