@@ -58,8 +58,8 @@ Trigger only once
 Save event callback promise to variable
 
 ```html
-  <div $var1="0">
-    <button  @click$var1="await $delay(500); return Math.random()">{{'event value: ' + await var1}}</button>
+  <div $var1="'none'">
+    <button  @click$var1="await $delay(500); return Math.random()">Event value: {{var1}}</button>
   </div>
 ```
 
@@ -116,10 +116,10 @@ This attribute will add classes based on a promise set to a variable, for each o
 - `.s-transition-idle` - set when the variable is undefined or is not a promise
 - `.s-transition-active` - set when the promise did not resolve or reject yet
 - `.s-transition-done` - set when the promise is resolved
-- `.s-transition.error` - set when the promise rejected
+- `.s-transition-error` - set when the promise rejected
 
 ```html
-  <div $var1>
+  <div $var1 $var2>
     <style>
       .s-transition span {
         display: none;
@@ -140,8 +140,8 @@ This attribute will add classes based on a promise set to a variable, for each o
       }
 
       .loader {
-        border: 2px solid white; /* Light grey */
-        border-top: 2px solid #ccc; /* Blue */
+        border: 2px solid white;
+        border-top: 2px solid #ccc;
         border-radius: 50%;
         width: 14px;
         height: 14px;
@@ -153,12 +153,27 @@ This attribute will add classes based on a promise set to a variable, for each o
         100% { transform: rotate(360deg); }
       }
     </style>
-    <button @click$var1="await $delay(2000); if(Math.random() < .5) throw new Error('error')">Trigger transition</button>
+
+    <button @click$var1="await $delay(2000); if(Math.random() < .5) throw new Error('random error')">Trigger transition</button>
     <div s-transition="var1"> 
       <span class="idle">Idle</span>
       <span class="active"><div class="loader"></div></span>
       <span class="done">Done</span>
       <span class="error">Error</span>
+    </div>
+
+    <button @click$var2="await $delay(2000); if(Math.random() < .5) throw new Error('random error')">Trigger custom transition</button>
+    <div $running
+         class="s-transition"
+         :class.s-transition-idle="(running = var2?.then(() => running = false, () => running = false)) === undefined"
+         :class.s-transition-active="!!running"
+         :class.s-transition-done="!running && var2?.then(() => true, () => false)"
+         :class.s-transition-error="!running && var2?.then(() => false, () => true)"
+    >
+      <span class="idle">Idle</span>
+      <span class="active"><div class="loader"></div></span>
+      <span class="done">Done</span>
+      <span class="error">Error: {{var2?.catch((e) => e.message)}}</span>
     </div>
   </div>
 ```
