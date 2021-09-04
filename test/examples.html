@@ -84,7 +84,7 @@
     <div $running
          class="s-transition"
          :class.s-transition-idle="(running = var2?.then(() => running = false, () => running = false)) === undefined"
-         :class.s-transition-active="running = !!running"
+         :class.s-transition-active="!!running"
          :class.s-transition-done="!running && var2?.then(() => true, () => false)"
          :class.s-transition-error="!running && var2?.then(() => false, () => true)"
     >

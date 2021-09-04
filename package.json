@@ -1,12 +1,12 @@
 {
   "name": "skope",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "A sandboxed js-in-html UI framework",
   "main": "dist/Skope.js",
   "homepage": "https://github.com/nyariv/skope#readme",
   "url": "https://github.com/nyariv/skope",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "echo \"no test specified\" && exit 0",
     "build": "rollup -c"
   },
   "author": "",
