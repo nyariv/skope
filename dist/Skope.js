@@ -1,41 +1,5 @@
 import HTMLSanitizer from './HTMLSanitizer.js';
 
-function asyncGeneratorStep(gen, resolve, reject, _next, _throw, key, arg) {
-  try {
-    var info = gen[key](arg);
-    var value = info.value;
-  } catch (error) {
-    reject(error);
-    return;
-  }
-
-  if (info.done) {
-    resolve(value);
-  } else {
-    Promise.resolve(value).then(_next, _throw);
-  }
-}
-
-function _asyncToGenerator(fn) {
-  return function () {
-    var self = this,
-        args = arguments;
-    return new Promise(function (resolve, reject) {
-      var gen = fn.apply(self, args);
-
-      function _next(value) {
-        asyncGeneratorStep(gen, resolve, reject, _next, _throw, "next", value);
-      }
-
-      function _throw(err) {
-        asyncGeneratorStep(gen, resolve, reject, _next, _throw, "throw", err);
-      }
-
-      _next(undefined);
-    });
-  };
-}
-
 function getDefaultExportFromCjs (x) {
 	return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, 'default') ? x['default'] : x;
 }
@@ -1716,8 +1680,9 @@ var Sandbox$1 = {};
       this.isVariable = isVariable;
     }
 
-    get() {
+    get(context) {
       if (this.context === undefined) throw new ReferenceError(`${this.prop} is not defined`);
+      context.getSubscriptions.forEach(cb => cb(this.context, this.prop));
       return this.context[this.prop];
     }
 
@@ -1800,7 +1765,7 @@ var Sandbox$1 = {};
         throw new SandboxError(`Cannot override global variable '${key}'`);
       }
 
-      prop.context[prop] = val;
+      prop.context[prop.prop] = val;
       return prop;
     }
 
@@ -1840,8 +1805,7 @@ var Sandbox$1 = {};
     function SandboxFunction(...params) {
       let code = params.pop() || "";
       let parsed = parse(code);
-      return createFunction(params, parsed.tree, ticks || currentTicks, {
-        ctx: context,
+      return createFunction(params, parsed.tree, ticks || currentTicks, { ...context,
         constants: parsed.constants,
         tree: parsed.tree
       }, undefined, 'anonymous');
@@ -1941,7 +1905,7 @@ var Sandbox$1 = {};
   }
 
   function assignCheck(obj, context, op = 'assign') {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
 
     if (obj.context === undefined) {
       throw new ReferenceError(`Cannot ${op} value to undefined.`);
@@ -1965,17 +1929,28 @@ var Sandbox$1 = {};
 
     if (op === "delete") {
       if (obj.context.hasOwnProperty(obj.prop)) {
-        (_a = context.ctx.changeSubscriptions.get(obj.context)) === null || _a === void 0 ? void 0 : _a.forEach(cb => cb({
+        (_a = context.changeSubscriptions.get(obj.context)) === null || _a === void 0 ? void 0 : _a.forEach(cb => cb({
+          type: "delete",
+          prop: obj.prop
+        }));
+        (_b = context.changeSubscriptionsGlobal.get(obj.context)) === null || _b === void 0 ? void 0 : _b.forEach(cb => cb({
           type: "delete",
           prop: obj.prop
         }));
       }
     } else if (obj.context.hasOwnProperty(obj.prop)) {
-      (_c = (_b = context.ctx.setSubscriptions.get(obj.context)) === null || _b === void 0 ? void 0 : _b.get(obj.prop)) === null || _c === void 0 ? void 0 : _c.forEach(cb => cb({
+      (_d = (_c = context.setSubscriptions.get(obj.context)) === null || _c === void 0 ? void 0 : _c.get(obj.prop)) === null || _d === void 0 ? void 0 : _d.forEach(cb => cb({
+        type: "replace"
+      }));
+      (_f = (_e = context.setSubscriptionsGlobal.get(obj.context)) === null || _e === void 0 ? void 0 : _e.get(obj.prop)) === null || _f === void 0 ? void 0 : _f.forEach(cb => cb({
         type: "replace"
       }));
     } else {
-      (_d = context.ctx.changeSubscriptions.get(obj.context)) === null || _d === void 0 ? void 0 : _d.forEach(cb => cb({
+      (_g = context.changeSubscriptions.get(obj.context)) === null || _g === void 0 ? void 0 : _g.forEach(cb => cb({
+        type: "create",
+        prop: obj.prop
+      }));
+      (_h = context.changeSubscriptionsGlobal.get(obj.context)) === null || _h === void 0 ? void 0 : _h.forEach(cb => cb({
         type: "create",
         prop: obj.prop
       }));
@@ -2000,7 +1975,7 @@ var Sandbox$1 = {};
             context.ctx.auditReport.globalsAccess.add(b);
           }
 
-          const rep = context.ctx.globalsWhitelist.has(context.ctx.sandboxGlobal[b]) ? context.ctx.evals.get(context.ctx.sandboxGlobal[b]) : undefined;
+          const rep = context.ctx.globalsWhitelist.has(context.ctx.sandboxGlobal[b]) ? context.evals.get(context.ctx.sandboxGlobal[b]) : undefined;
 
           if (rep) {
             done(undefined, rep);
@@ -2013,7 +1988,6 @@ var Sandbox$1 = {};
           return;
         }
 
-        context.ctx.getSubscriptions.forEach(cb => cb(prop.context, prop.prop));
         done(undefined, prop);
         return;
       } else if (a === undefined) {
@@ -2090,8 +2064,8 @@ var Sandbox$1 = {};
         }
       }
 
-      if (context.ctx.evals.has(a[b])) {
-        done(undefined, context.ctx.evals.get(a[b]));
+      if (context.evals.has(a[b])) {
+        done(undefined, context.evals.get(a[b]));
         return;
       }
 
@@ -2101,11 +2075,6 @@ var Sandbox$1 = {};
       }
 
       let g = obj.isGlobal || isFunction && !sandboxedFunctions.has(a) || context.ctx.globalsWhitelist.has(a);
-
-      if (!g) {
-        context.ctx.getSubscriptions.forEach(cb => cb(a, b));
-      }
-
       done(undefined, new Prop(a, b, false, g));
     },
     'call': (exec, done, ticks, a, b, obj, context, scope) => {
@@ -2123,7 +2092,7 @@ var Sandbox$1 = {};
         }
       }).flat();
       execMany(ticks, exec, toLispArray(args), (err, vals) => {
-        var _a;
+        var _a, _b;
 
         if (err) {
           done(err);
@@ -2135,7 +2104,7 @@ var Sandbox$1 = {};
           return;
         }
 
-        if (obj.context[obj.prop] === JSON.stringify && context.ctx.getSubscriptions.size) {
+        if (obj.context[obj.prop] === JSON.stringify && context.getSubscriptions.size) {
           const cache = new Set();
 
           const recurse = x => {
@@ -2143,7 +2112,7 @@ var Sandbox$1 = {};
             cache.add(x);
 
             for (let y in x) {
-              context.ctx.getSubscriptions.forEach(cb => cb(x, y));
+              context.getSubscriptions.forEach(cb => cb(x, y));
               recurse(x[y]);
             }
           };
@@ -2151,7 +2120,7 @@ var Sandbox$1 = {};
           recurse(vals[0]);
         }
 
-        if (obj.context instanceof Array && arrayChange.has(obj.context[obj.prop]) && context.ctx.changeSubscriptions.get(obj.context)) {
+        if (obj.context instanceof Array && arrayChange.has(obj.context[obj.prop]) && (context.changeSubscriptions.get(obj.context) || context.changeSubscriptionsGlobal.get(obj.context))) {
           let change;
           let changed = false;
 
@@ -2206,10 +2175,12 @@ var Sandbox$1 = {};
           }
 
           if (changed) {
-            (_a = context.ctx.changeSubscriptions.get(obj.context)) === null || _a === void 0 ? void 0 : _a.forEach(cb => cb(change));
+            (_a = context.changeSubscriptions.get(obj.context)) === null || _a === void 0 ? void 0 : _a.forEach(cb => cb(change));
+            (_b = context.changeSubscriptionsGlobal.get(obj.context)) === null || _b === void 0 ? void 0 : _b.forEach(cb => cb(change));
           }
         }
 
+        obj.get(context);
         done(undefined, obj.context[obj.prop](...vals));
       }, scope, context);
     },
@@ -2279,7 +2250,7 @@ var Sandbox$1 = {};
         done(undefined, name.replace(/(\\\\)*(\\)?\${(\d+)}/g, (match, $$, $, num) => {
           if ($) return match;
           let res = reses[num];
-          return ($$ ? $$ : '') + `${valueOrProp(res)}`;
+          return ($$ ? $$ : '') + `${valueOrProp(res, context)}`;
         }));
       }, scope, context);
     },
@@ -2323,8 +2294,7 @@ var Sandbox$1 = {};
     },
     '=': (exec, done, ticks, a, b, obj, context) => {
       assignCheck(obj, context);
-      obj.context[obj.prop] = b;
-      done(undefined, new Prop(obj.context, obj.prop, false, obj.isGlobal));
+      done(undefined, obj.context[obj.prop] = b);
     },
     '+=': (exec, done, ticks, a, b, obj, context) => {
       assignCheck(obj, context);
@@ -2383,7 +2353,7 @@ var Sandbox$1 = {};
         if (err) {
           done(err);
         } else {
-          exec(ticks, valueOrProp(res) ? b.t : b.f, scope, context, done);
+          exec(ticks, valueOrProp(res, context) ? b.t : b.f, scope, context, done);
         }
       });
     },
@@ -2413,7 +2383,7 @@ var Sandbox$1 = {};
     '>>>': (exec, done, ticks, a, b) => done(undefined, a >>> b),
     'typeof': (exec, done, ticks, a, b, obj, context, scope) => {
       exec(ticks, b, scope, context, (e, prop) => {
-        done(undefined, typeof valueOrProp(prop));
+        done(undefined, typeof valueOrProp(prop, context));
       });
     },
     'instanceof': (exec, done, ticks, a, b) => done(undefined, a instanceof b),
@@ -2607,7 +2577,7 @@ var Sandbox$1 = {};
           return;
         }
 
-        executeTreeWithDone(exec, done, ticks, context, valueOrProp(res) ? b.t : b.f, [new Scope(scope)], inLoopOrSwitch);
+        executeTreeWithDone(exec, done, ticks, context, valueOrProp(res, context) ? b.t : b.f, [new Scope(scope)], inLoopOrSwitch);
       });
     },
     'switch': (exec, done, ticks, a, b, obj, context, scope) => {
@@ -2617,12 +2587,14 @@ var Sandbox$1 = {};
           return;
         }
 
+        toTest = valueOrProp(toTest, context);
+
         if (exec === execSync) {
           let res;
           let isTrue = false;
 
           for (let caseItem of b) {
-            if (isTrue || (isTrue = !caseItem.a || toTest === valueOrProp(syncDone(d => exec(ticks, caseItem.a, scope, context, d)).result))) {
+            if (isTrue || (isTrue = !caseItem.a || toTest === valueOrProp(syncDone(d => exec(ticks, caseItem.a, scope, context, d)).result, context))) {
               if (!caseItem.b) continue;
               res = executeTree(ticks, context, caseItem.b, [scope], "switch");
               if (res.breakLoop) break;
@@ -2648,7 +2620,7 @@ var Sandbox$1 = {};
             for (let caseItem of b) {
               let ad;
 
-              if (isTrue || (isTrue = !caseItem.a || toTest === valueOrProp((ad = asyncDone(d => exec(ticks, caseItem.a, scope, context, d))).isInstant === true ? ad.instant : (await ad.p).result))) {
+              if (isTrue || (isTrue = !caseItem.a || toTest === valueOrProp((ad = asyncDone(d => exec(ticks, caseItem.a, scope, context, d))).isInstant === true ? ad.instant : (await ad.p).result, context))) {
                 if (!caseItem.b) continue;
                 res = await executeTreeAsync(ticks, context, caseItem.b, [scope], "switch");
                 if (res.breakLoop) break;
@@ -2705,8 +2677,8 @@ var Sandbox$1 = {};
     ops.set(op, ops2[op]);
   }
 
-  function valueOrProp(a) {
-    if (a instanceof Prop) return a.get();
+  function valueOrProp(a, context) {
+    if (a instanceof Prop) return a.get(context);
     if (a === optional) return undefined;
     return a;
   }
@@ -2824,7 +2796,7 @@ var Sandbox$1 = {};
       let a = obj;
 
       try {
-        a = obj instanceof Prop ? obj.get() : obj;
+        a = obj instanceof Prop ? obj.get(context) : obj;
       } catch (e) {
         done(e);
         return;
@@ -2863,7 +2835,7 @@ var Sandbox$1 = {};
       let b = bobj;
 
       try {
-        b = bobj instanceof Prop ? bobj.get() : bobj;
+        b = bobj instanceof Prop ? bobj.get(context) : bobj;
       } catch (e) {
         done(e);
         return;
@@ -2900,7 +2872,7 @@ var Sandbox$1 = {};
       let a = obj;
 
       try {
-        a = obj instanceof Prop ? obj.get() : obj;
+        a = obj instanceof Prop ? obj.get(context) : obj;
       } catch (e) {
         done(e);
         return;
@@ -2938,7 +2910,7 @@ var Sandbox$1 = {};
       let b = bobj;
 
       try {
-        b = bobj instanceof Prop ? bobj.get() : bobj;
+        b = bobj instanceof Prop ? bobj.get(context) : bobj;
       } catch (e) {
         done(e);
         return;
@@ -2978,30 +2950,36 @@ var Sandbox$1 = {};
     currentTicks = ticks;
 
     if (tree instanceof Prop) {
-      done(undefined, tree.get());
+      try {
+        done(undefined, tree.get(context));
+      } catch (err) {
+        done(err);
+      }
+    } else if (tree === optional) {
+      done();
     } else if (Array.isArray(tree) && tree.lisp === lispArrayKey) {
       execMany(ticks, exec, tree, done, scope, context, inLoopOrSwitch);
     } else if (!(tree instanceof Lisp)) {
       done(undefined, tree);
-    } else if (unexecTypes.has(tree.op)) {
-      try {
-        ops.get(tree.op)(exec, done, ticks, tree.a, tree.b, tree, context, scope, undefined, inLoopOrSwitch);
-      } catch (err) {
-        done(err);
-      }
     } else if (tree.op === 'await') {
       if (!isAsync) {
         done(new SandboxError("Illegal use of 'await', must be inside async function"));
       } else if ((_a = context.ctx.prototypeWhitelist) === null || _a === void 0 ? void 0 : _a.has(Promise.prototype)) {
         execAsync(ticks, tree.a, scope, context, async (e, r) => {
           if (e) done(e);else try {
-            done(undefined, await valueOrProp(r));
+            done(undefined, await valueOrProp(r, context));
           } catch (err) {
             done(err);
           }
         }, inLoopOrSwitch).catch(done);
       } else {
         done(new SandboxError('Async/await is not permitted'));
+      }
+    } else if (unexecTypes.has(tree.op)) {
+      try {
+        ops.get(tree.op)(exec, done, ticks, tree.a, tree.b, tree, context, scope, undefined, inLoopOrSwitch);
+      } catch (err) {
+        done(err);
       }
     } else {
       return false;
@@ -3141,8 +3119,47 @@ var Sandbox$1 = {};
 
   }
 
+  class ExecContext {
+    constructor(ctx, constants, tree, getSubscriptions, setSubscriptions, changeSubscriptions, setSubscriptionsGlobal, changeSubscriptionsGlobal, evals) {
+      this.ctx = ctx;
+      this.constants = constants;
+      this.tree = tree;
+      this.getSubscriptions = getSubscriptions;
+      this.setSubscriptions = setSubscriptions;
+      this.changeSubscriptions = changeSubscriptions;
+      this.setSubscriptionsGlobal = setSubscriptionsGlobal;
+      this.changeSubscriptionsGlobal = changeSubscriptionsGlobal;
+      this.evals = evals;
+    }
+
+  }
+
+  function subscribeSet(obj, name, callback, context) {
+    const names = context.setSubscriptions.get(obj) || new Map();
+    context.setSubscriptions.set(obj, names);
+    const callbacks = names.get(name) || new Set();
+    names.set(name, callbacks);
+    callbacks.add(callback);
+    let changeCbs;
+
+    if (obj && obj[name] && typeof obj[name] === "object") {
+      changeCbs = context.changeSubscriptions.get(obj[name]) || new Set();
+      changeCbs.add(callback);
+      context.changeSubscriptions.set(obj[name], changeCbs);
+    }
+
+    return {
+      unsubscribe: () => {
+        callbacks.delete(callback);
+        changeCbs === null || changeCbs === void 0 ? void 0 : changeCbs.delete(callback);
+      }
+    };
+  }
+
   class Sandbox {
     constructor(options) {
+      this.setSubscriptions = new WeakMap();
+      this.changeSubscriptions = new WeakMap();
       options = Object.assign({
         audit: false,
         forbidFunctionCalls: false,
@@ -3158,21 +3175,9 @@ var Sandbox$1 = {};
         prototypeWhitelist: new Map([...options.prototypeWhitelist].map(a => [a[0].prototype, a[1]])),
         options,
         globalScope: new Scope(null, options.globals, sandboxGlobal),
-        sandboxGlobal,
-        evals: new Map(),
-        getSubscriptions: new Set(),
-        setSubscriptions: new WeakMap(),
-        changeSubscriptions: new WeakMap()
+        sandboxGlobal
       };
       this.context.prototypeWhitelist.set(Object.getPrototypeOf([][Symbol.iterator]()), new Set());
-      const func = sandboxFunction(this.context);
-      this.context.evals.set(Function, func);
-      this.context.evals.set(eval, sandboxedEval(func));
-      this.context.evals.set(setTimeout, sandboxedSetTimeout(func));
-      this.context.evals.set(setInterval, sandboxedSetInterval(func));
-      this.Function = sandboxFunction(this.context, {
-        ticks: BigInt(0)
-      });
     }
 
     static get SAFE_GLOBALS() {
@@ -3242,33 +3247,19 @@ var Sandbox$1 = {};
       return map;
     }
 
-    subscribeGet(callback) {
-      this.context.getSubscriptions.add(callback);
+    subscribeGet(callback, context) {
+      context.getSubscriptions.add(callback);
       return {
-        unsubscribe: () => this.context.getSubscriptions.delete(callback)
+        unsubscribe: () => context.getSubscriptions.delete(callback)
       };
     }
 
-    subscribeSet(obj, name, callback) {
-      const names = this.context.setSubscriptions.get(obj) || new Map();
-      this.context.setSubscriptions.set(obj, names);
-      const callbacks = names.get(name) || new Set();
-      names.set(name, callbacks);
-      callbacks.add(callback);
-      let changeCbs;
+    subscribeSet(obj, name, callback, context) {
+      return subscribeSet(obj, name, callback, context);
+    }
 
-      if (obj && obj[name] && typeof obj[name] === "object") {
-        changeCbs = this.context.changeSubscriptions.get(obj[name]) || new Set();
-        changeCbs.add(callback);
-        this.context.changeSubscriptions.set(obj[name], changeCbs);
-      }
-
-      return {
-        unsubscribe: () => {
-          callbacks.delete(callback);
-          if (changeCbs) changeCbs.delete(callback);
-        }
-      };
+    subscribeSetGlobal(obj, name, callback) {
+      return subscribeSet(obj, name, callback, this);
     }
 
     static audit(code, scopes = []) {
@@ -3278,66 +3269,99 @@ var Sandbox$1 = {};
         globals[i] = globalThis[i];
       }
 
-      return new Sandbox({
+      const sandbox = new Sandbox({
         globals,
         audit: true
-      }).executeTree(parse(code), scopes);
+      });
+      return sandbox.executeTree(sandbox.createContext(sandbox.context, parse(code)), scopes);
     }
 
     static parse(code) {
       return parse(code);
     }
 
-    executeTree(executionTree, scopes = []) {
-      return executeTree({
-        ticks: BigInt(0)
-      }, {
-        ctx: this.context,
-        constants: executionTree.constants,
-        tree: executionTree.tree
-      }, executionTree.tree, scopes);
+    createContext(context, executionTree) {
+      const evals = new Map();
+      const execContext = new ExecContext(context, executionTree.constants, executionTree.tree, new Set(), new WeakMap(), new WeakMap(), this.setSubscriptions, this.changeSubscriptions, evals);
+      const func = sandboxFunction(execContext);
+      evals.set(Function, func);
+      evals.set(eval, sandboxedEval(func));
+      evals.set(setTimeout, sandboxedSetTimeout(func));
+      evals.set(setInterval, sandboxedSetInterval(func));
+      return execContext;
     }
 
-    executeTreeAsync(executionTree, scopes = []) {
+    executeTree(context, scopes = []) {
+      return executeTree({
+        ticks: BigInt(0)
+      }, context, context.tree, scopes);
+    }
+
+    executeTreeAsync(context, scopes = []) {
       return executeTreeAsync({
         ticks: BigInt(0)
-      }, {
-        ctx: this.context,
-        constants: executionTree.constants,
-        tree: executionTree.tree
-      }, executionTree.tree, scopes);
+      }, context, context.tree, scopes);
     }
 
     compile(code, optimize = false) {
-      const executionTree = parse(code, optimize);
-      return (...scopes) => {
-        return this.executeTree(executionTree, scopes).result;
+      const parsed = parse(code, optimize);
+
+      const exec = (...scopes) => {
+        const context = this.createContext(this.context, parsed);
+        return {
+          context,
+          run: () => this.executeTree(context, [...scopes]).result
+        };
       };
+
+      return exec;
     }
 
     compileAsync(code, optimize = false) {
-      const executionTree = parse(code, optimize);
-      return async (...scopes) => {
-        return (await this.executeTreeAsync(executionTree, scopes)).result;
+      const parsed = parse(code, optimize);
+
+      const exec = (...scopes) => {
+        const context = this.createContext(this.context, parsed);
+        return {
+          context,
+          run: async () => (await this.executeTreeAsync(context, [...scopes])).result
+        };
       };
+
+      return exec;
     }
 
     compileExpression(code, optimize = false) {
-      const executionTree = parse(code, optimize, true);
-      return (...scopes) => {
-        return this.executeTree(executionTree, scopes).result;
+      const parsed = parse(code, optimize, true);
+
+      const exec = (...scopes) => {
+        const context = this.createContext(this.context, parsed);
+        return {
+          context,
+          run: () => this.executeTree(context, [...scopes]).result
+        };
       };
+
+      return exec;
     }
 
     compileExpressionAsync(code, optimize = false) {
-      const executionTree = parse(code, optimize, true);
-      return async (...scopes) => {
-        return (await this.executeTreeAsync(executionTree, scopes)).result;
+      const parsed = parse(code, optimize, true);
+
+      const exec = (...scopes) => {
+        const context = this.createContext(this.context, parsed);
+        return {
+          context,
+          run: async () => (await this.executeTreeAsync(context, [...scopes])).result
+        };
       };
+
+      return exec;
     }
 
   }
 
+  exports.ExecContext = ExecContext;
   exports.FunctionScope = FunctionScope;
   exports.LocalScope = LocalScope;
   exports.SandboxGlobal = SandboxGlobal;
@@ -4462,6 +4486,10 @@ function runDirective(skope, exec, scopes) {
   return [];
 }
 
+function createErrorCb(el) {
+  return err => createError(err === null || err === void 0 ? void 0 : err.message, el);
+}
+
 function initialize(skope) {
   var eQuery = createClass(() => skope.sanitizer);
   var {
@@ -4489,7 +4517,7 @@ function initialize(skope) {
     }
 
     $watch(cb, callback) {
-      var subUnsubs = skope.watch(cb, callback);
+      var subUnsubs = skope.watch(this.$el.get(0), cb, callback, () => {});
       var sub = getStore(this.$el.get(0), 'currentSubs', []);
       sub.push(subUnsubs);
       return {
@@ -4530,7 +4558,7 @@ function initialize(skope) {
 
     var elem = this.get(0);
     if (!elem) return this;
-    contentElem = preprocessHTML(skope, content);
+    contentElem = preprocessHTML(skope, elem, content);
     var currentSubs = getStore(elem, 'currentSubs', []);
 
     for (var el of [...elem.children]) {
@@ -4577,13 +4605,17 @@ function initialize(skope) {
   skope.prototypeWhitelist.set(ElementScope, new Set());
   skope.ElementCollection = ElementCollection;
   skope.defineDirective('show', (exec, scopes) => {
-    return skope.watch(watchRun(skope, scopes, exec.js), (val, lastVal) => {
-      exec.element.classList.toggle('hide', !val);
+    return skope.watch(exec.att, watchRun(skope, scopes, exec.js), (val, lastVal) => {
+      exec.element.classList.toggle('s-hide', !val);
+    }, () => {
+      exec.element.classList.toggle('s-hide', false);
     });
   });
   skope.defineDirective('text', (exec, scopes) => {
-    return skope.watch(watchRun(skope, scopes, exec.js), (val, lastVal) => {
+    return skope.watch(exec.att, watchRun(skope, scopes, exec.js), (val, lastVal) => {
       skope.wrap(exec.element).text(val + "");
+    }, () => {
+      skope.wrap(exec.element).text("");
     });
   });
   skope.defineDirective('ref', (exec, scopes) => {
@@ -4594,9 +4626,9 @@ function initialize(skope) {
     var name = getScope(skope, exec.element, [], {
       name: exec.js.trim()
     });
-    skope.run(document, "$refs[name] = $wrap([...($refs[name] || []), $el])", [...scopes, name]);
+    skope.exec(document, "$refs[name] = $wrap([...($refs[name] || []), $el])", [...scopes, name]).run();
     return [() => {
-      skope.run(document, "$refs[name] = $refs[name].not($el)", [...scopes, name]);
+      skope.exec(document, "$refs[name] = $refs[name].not($el)", [...scopes, name]).run();
     }];
   });
   skope.defineDirective('model', (exec, scopes) => {
@@ -4613,11 +4645,16 @@ function initialize(skope) {
 
     var change = () => {
       last = !isContentEditable ? $el.val() : $el.html();
-      skope.run(getRootElement(scopes), exec.js.trim() + ' = ($$value === undefined && !reset) ? ' + exec.js.trim() + ' : $$value', pushScope(skope, scopes, el, exec.subs, {
-        $$value: last,
-        reset
-      }));
-      reset = false;
+
+      try {
+        skope.exec(getRootElement(scopes), exec.js.trim() + ' = ($$value === undefined && !reset) ? ' + exec.js.trim() + ' : $$value', pushScope(skope, scopes, el, exec.subs, {
+          $$value: last,
+          reset
+        })).run();
+        reset = false;
+      } catch (err) {
+        createError(err === null || err === void 0 ? void 0 : err.message, exec.element);
+      }
     };
 
     var sub = [];
@@ -4628,24 +4665,28 @@ function initialize(skope) {
       sub.push($form.delegate().on($form.get(0), 'reset', () => reset = !!setTimeout(change)));
     }
 
-    Promise.resolve().then(() => {
-      sub.push(skope.watch(watchRun(skope, scopes, exec.js.trim()), (val, lastVal) => {
-        if (val === last) return;
+    sub.push(skope.watch(exec.att, watchRun(skope, scopes, exec.js.trim()), (val, lastVal) => {
+      if (val === last) return;
 
-        if (isContentEditable) {
-          $el.html(val + "");
-        } else {
-          $el.val(val);
-        }
-      }));
-    });
+      if (isContentEditable) {
+        $el.html(val + "");
+      } else {
+        $el.val(val);
+      }
+    }, () => {
+      if (isContentEditable) {
+        $el.html("");
+      }
+    }));
     return sub;
   });
   skope.defineDirective('html', (exec, scopes) => {
-    return skope.watch(watchRun(skope, scopes, exec.js), (val, lastVal) => {
+    return skope.watch(exec.att, watchRun(skope, scopes, exec.js), (val, lastVal) => {
       if (val instanceof Node || typeof val === 'string' || val instanceof this.ElementCollection) {
         skope.wrap(exec.element).html(val);
       }
+    }, () => {
+      skope.wrap(exec.element).html("");
     });
   });
   skope.defineDirective('transition', (exec, scopes) => {
@@ -4653,7 +4694,7 @@ function initialize(skope) {
     $el.addClass('s-transition');
     $el.addClass('s-transition-idle');
     var lastPromise;
-    return skope.watch(watchRun(skope, scopes, exec.js), (val, lastVal) => {
+    return skope.watch(exec.att, watchRun(skope, scopes, exec.js), (val, lastVal) => {
       if (val === undefined || lastPromise !== val) {
         $el.addClass('s-transition-idle');
         $el.removeClass('s-transition-active');
@@ -4708,15 +4749,21 @@ function getScopes(skope, element) {
   return [...(element.hasAttribute('s-detached') ? [] : getScopes(skope, element.parentElement)), ...scopes];
 }
 
+var varSubsStore = new WeakMap();
+
 function watchRun(skope, scopes, code) {
-  return () => skope.run(getRootElement(scopes), 'return ' + code, scopes);
+  var varSubs = {};
+  var exec = skope.exec(getRootElement(scopes), 'return ' + code, scopes);
+
+  varSubs.subscribeGet = callback => skope.sandbox.subscribeGet(callback, exec.context);
+
+  varSubs.subscribeSet = (obj, name, callback) => skope.sandbox.subscribeSet(obj, name, callback, exec.context);
+
+  varSubsStore.set(exec.run, varSubs);
+  return exec.run;
 }
 
-function watchRunAsync(skope, scopes, code) {
-  return () => skope.runAsync(getRootElement(scopes), 'return ' + code, scopes);
-}
-
-function preprocessHTML(skope, html) {
+function preprocessHTML(skope, parent, html) {
   var elem;
 
   if (typeof html === 'string') {
@@ -4729,7 +4776,18 @@ function preprocessHTML(skope, html) {
     return html;
   }
 
-  skope.sanitizer.sanitizeHTML(elem);
+  if (parent.matches('[s-static], [s-static] *')) {
+    skope.sanitizer.sanitizeHTML(elem, true);
+  } else {
+    for (var el of elem.querySelectorAll('[s-static]:not([s-static] [s-static])')) {
+      for (var child of el.children) {
+        skope.sanitizer.sanitizeHTML(child, true);
+      }
+    }
+
+    skope.sanitizer.sanitizeHTML(elem);
+  }
+
   return elem;
 }
 
@@ -4772,6 +4830,7 @@ function pushScope(skope, scopes, elem, sub, vars) {
 function createError(msg, el) {
   var err = new Error(msg);
   err.element = el;
+  console.error(err, el);
   return err;
 }
 
@@ -4789,7 +4848,6 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
         var comment = document.createComment('s-if');
         var ifElem;
         var at = element.getAttribute('s-if');
-        element.removeAttribute('s-if');
         element.before(comment);
         element.remove();
         skope.deleteStore(element, 'currentSubs');
@@ -4797,10 +4855,11 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
           skope.getStore(comment, 'currentSubs', currentSubs);
           var nestedSubs = [];
           currentSubs.push(nestedSubs);
-          currentSubs.push(skope.watch(watchRun(skope, scopes, at), (val, lastVal) => {
+          currentSubs.push(skope.watch(element.getAttributeNode('s-if'), watchRun(skope, scopes, at), (val, lastVal) => {
             if (val) {
               if (!ifElem) {
                 ifElem = element.cloneNode(true);
+                ifElem.removeAttribute('s-if');
                 var processed = processHTML(skope, ifElem, nestedSubs, delegate);
                 comment.after(processed.elem);
                 processed.run(pushScope(skope, scopes, ifElem, nestedSubs));
@@ -4811,6 +4870,12 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
                 ifElem = undefined;
                 unsubNested(nestedSubs);
               }
+            }
+          }, err => {
+            if (ifElem) {
+              ifElem.remove();
+              ifElem = undefined;
+              unsubNested(nestedSubs);
             }
           }));
         });
@@ -4830,12 +4895,10 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
 
         var _at = element.getAttribute('s-for');
 
-        element.removeAttribute('s-for');
-
         var split = _at.split(' in ');
 
         if (split.length < 2) {
-          throw createError('In valid s-for directive: ' + _at, element);
+          throw createError('In valid s-for directive: ' + _at, element.getAttributeNode('s-for'));
         } else {
           exp = split.slice(1).join(' in ');
         }
@@ -4849,7 +4912,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
           value = varMatch[1];
         } else {
           var doubleMatch = varsExp.match(regKeyValName);
-          if (!doubleMatch) throw createError('In valid s-for directive: ' + _at, element);
+          if (!doubleMatch) throw createError('In valid s-for directive: ' + _at, element.getAttributeNode('s-for'));
           key = doubleMatch[1];
           value = doubleMatch[2];
         }
@@ -4859,7 +4922,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
           currentSubs.push(del.off);
           var nestedSubs = [];
           currentSubs.push(nestedSubs);
-          currentSubs.push(watchAsync(skope, watchRunAsync(skope, scopes, exp), val => {
+          currentSubs.push(skope.watch(element.getAttributeNode('s-for'), watchRun(skope, scopes, exp), val => {
             unsubNested(nestedSubs);
             items.forEach(item => {
               item.remove();
@@ -4876,6 +4939,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
               if (key) scope[key] = i;
               if (value) scope[value] = item;
               var elem = element.cloneNode(true);
+              elem.removeAttribute('s-for');
               var processed = processHTML(skope, elem, forSubs, del);
 
               _comment.before(processed.elem);
@@ -4898,7 +4962,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
             }
 
             runs.forEach(run => run());
-          }, err => {
+          }, () => {
             unsubNested(nestedSubs);
             items.forEach(item => {
               item.remove();
@@ -4928,7 +4992,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
           var name = att.nodeName.substring(1).replace(/\-([\w\$])/g, (match, letter) => letter.toUpperCase());
 
           if (!name.match(regVarName)) {
-            console.error("Invalid variable name in attribute ".concat(att.nodeName));
+            createError("Invalid variable name in attribute", att);
             return "continue";
           }
 
@@ -4944,7 +5008,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
           }
 
           ready(scopes => {
-            skope.runAsync(getRootElement(scopes), "let ".concat(name, " = ").concat(att.nodeValue), scopes);
+            skope.execAsync(getRootElement(scopes), "let ".concat(name, " = ").concat(att.nodeValue), scopes).run().catch(createErrorCb(att));
           });
         }
       };
@@ -4958,7 +5022,11 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
       if (element instanceof HTMLScriptElement) {
         if (element.type === 'skopejs') {
           ready(scopes => {
-            skope.run(getRootElement(scopes), element.innerHTML, scopes);
+            try {
+              skope.execAsync(getRootElement(scopes), element.innerHTML, scopes).run();
+            } catch (err) {
+              createError(err === null || err === void 0 ? void 0 : err.message, element);
+            }
           });
         } else {
           element.remove();
@@ -4972,34 +5040,51 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
           if (_att.nodeName.startsWith(':')) {
             var _at2 = _att.nodeName.slice(1);
 
+            var parts = _at2.split('.');
+
             ready(scopes => {
-              currentSubs.push(skope.watch(watchRun(skope, scopes, _att.nodeValue), (val, lastVal) => {
+              currentSubs.push(skope.watch(_att, watchRun(skope, scopes, _att.nodeValue), (val, lastVal) => {
                 if (typeof val === 'object' && ['style', 'class'].includes(_at2)) {
-                  if (_at2 === 'class') {
-                    $element.toggleClass(val);
-                  } else {
-                    if (element instanceof HTMLElement || element instanceof SVGElement) {
-                      for (var c in val) {
-                        element.style[c] = val[c];
+                  Object.entries(val).forEach(a => Promise.resolve(a[1]).then(v => {
+                    if (_at2 === 'class') {
+                      $element.toggleClass(a[0], !!v);
+                    } else {
+                      if (element instanceof HTMLElement || element instanceof SVGElement) {
+                        element.style[a[0]] = v;
                       }
                     }
-                  }
+                  }, () => {
+                    if (_at2 === 'class') {
+                      $element.toggleClass(a[0], false);
+                    }
+                  }));
                 } else {
-                  $element.attr(_at2, val + "");
+                  if (parts.length === 2 && ['style', 'class'].includes(parts[0])) {
+                    if (parts[0] === 'class') {
+                      $element.toggleClass(parts[1], !!val);
+                    } else {
+                      if (element instanceof HTMLElement || element instanceof SVGElement) {
+                        element.style[parts[1]] = val;
+                      }
+                    }
+                  } else {
+                    $element.attr(_at2, val + "");
+                  }
                 }
-              }));
+              }, () => {}));
             });
           } else if (_att.nodeName.startsWith('@')) {
             var _transitionParts$;
 
             var transitionParts = _att.nodeName.split('$');
 
-            var parts = transitionParts[0].slice(1).split('.');
+            var _parts = transitionParts[0].slice(1).split('.');
+
             var transitionVar = (_transitionParts$ = transitionParts[1]) === null || _transitionParts$ === void 0 ? void 0 : _transitionParts$.replace(/\-([\w\$])/g, (match, letter) => letter.toUpperCase());
 
             if (transitionVar) {
               if (!regVarName.test(transitionVar)) {
-                console.error("Invalid variable name in attribute ".concat(_att.nodeName));
+                createError("Invalid variable name in attribute ".concat(_att.nodeName), element);
                 return "continue";
               }
             }
@@ -5008,31 +5093,33 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
               var trans;
 
               var ev = e => {
-                trans = skope.runAsync(getRootElement(scopes), _att.nodeValue, pushScope(skope, scopes, element, currentSubs, {
+                trans = skope.execAsync(getRootElement(scopes), _att.nodeValue, pushScope(skope, scopes, element, currentSubs, {
                   $event: e
-                }));
+                })).run();
+                trans.catch(() => {});
 
                 if (transitionVar) {
-                  skope.run(getRootElement(scopes), "".concat(transitionVar, " = trans"), pushScope(skope, scopes, element, currentSubs, {
+                  skope.exec(getRootElement(scopes), "".concat(transitionVar, " = trans"), pushScope(skope, scopes, element, currentSubs, {
                     trans
-                  }));
+                  })).run();
                 }
               };
 
               if (transitionVar) {
-                skope.run(getRootElement(scopes), "if (typeof ".concat(transitionVar, " === 'undefined') var ").concat(transitionVar), scopes);
+                skope.exec(getRootElement(scopes), "if (typeof ".concat(transitionVar, " === 'undefined') var ").concat(transitionVar), scopes).run();
               }
 
-              if (parts[1] === 'once') {
-                currentSubs.push(delegate.one(element, parts[0], ev));
+              if (_parts[1] === 'once') {
+                currentSubs.push(delegate.one(element, _parts[0], ev));
               } else {
-                currentSubs.push(delegate.on(element, parts[0], ev));
+                currentSubs.push(delegate.on(element, _parts[0], ev));
               }
             });
           } else if (_att.nodeName.startsWith('s-')) {
             ready(scopes => {
               currentSubs.push(runDirective(skope, {
                 element,
+                att: _att,
                 directive: _att.nodeName.slice(2),
                 js: _att.nodeValue,
                 original: element.outerHTML,
@@ -5072,10 +5159,9 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
             found = true;
             var placeholder = document.createTextNode("");
             ready(scopes => {
-              currentSubs.push(watchAsync(skope, watchRunAsync(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
+              currentSubs.push(skope.watch(element, watchRun(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
                 placeholder.textContent = val + "";
               }, err => {
-                placeholder.textContent = "";
               }));
               return scopes;
             });
@@ -5106,22 +5192,6 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
   }
 }
 
-function watchAsync(skope, toWatch, handler, errorCb) {
-  var lastVal;
-  return skope.watch(toWatch, val => {
-    val.then( /*#__PURE__*/function () {
-      var _ref = _asyncToGenerator(function* (v) {
-        handler(v, lastVal);
-        lastVal = v;
-      });
-
-      return function (_x) {
-        return _ref.apply(this, arguments);
-      };
-    }(), errorCb);
-  });
-}
-
 class Skope {
   constructor(options) {
     this.components = {};
@@ -5132,28 +5202,40 @@ class Skope {
     this.sanitizer = (options === null || options === void 0 ? void 0 : options.sanitizer) || new HTMLSanitizer();
     delete this.globals.Function;
     delete this.globals.eval;
+
+    if (!(options !== null && options !== void 0 && options.allowRegExp)) {
+      delete this.globals.RegExp;
+    }
+
     initialize(this);
     this.sandbox = new Sandbox({
       globals: this.globals,
-      prototypeWhitelist: this.prototypeWhitelist
+      prototypeWhitelist: this.prototypeWhitelist,
+      executionQuota: (options === null || options === void 0 ? void 0 : options.executionQuote) || 100000n
     });
   }
 
   defineComponent(name, comp) {
     this.components[name] = comp;
+    var prot = Object.getPrototypeOf(comp);
 
-    if (comp.constructor !== {}.constructor && !this.prototypeWhitelist.has(comp.constructor)) {
-      this.prototypeWhitelist.set(comp.constructor, new Set());
+    if (prot !== Object.getPrototypeOf({}) && !this.sandbox.context.prototypeWhitelist.has(prot)) {
+      this.sandbox.context.prototypeWhitelist.set(prot, new Set());
     }
   }
 
-  watch(toWatch, handler) {
+  watch(elem, toWatch, handler, errorCb) {
+    var _this = this;
+
     var watchGets = new Map();
     var subUnsubs = [];
+    var varSubs = varSubsStore.get(toWatch);
     var lastVal;
     var update = false;
     var start = Date.now();
     var count = 0;
+    var lastPromise;
+    var ignore = new WeakMap();
 
     var digest = () => {
       if (Date.now() - start > 4000) {
@@ -5161,12 +5243,13 @@ class Skope {
         start = Date.now();
       } else {
         if (count++ > 200) {
-          throw new Error('Too many digests too quickly');
+          createError('Too many digests', elem);
+          return;
         }
       }
 
       unsubNested(subUnsubs);
-      var g = this.sandbox.subscribeGet((obj, name) => {
+      var g = varSubs === null || varSubs === void 0 ? void 0 : varSubs.subscribeGet((obj, name) => {
         if (obj === undefined) return;
         var list = watchGets.get(obj) || new Set();
         list.add(name);
@@ -5178,16 +5261,49 @@ class Skope {
         val = toWatch();
       } catch (err) {
         g.unsubscribe();
-        throw err;
+        createError(err === null || err === void 0 ? void 0 : err.message, elem);
+        return;
       }
 
       g.unsubscribe();
 
-      for (var item of watchGets) {
+      var _loop4 = function _loop4(item) {
         var obj = item[0];
 
+        var _loop6 = function _loop6(name) {
+          subUnsubs.push(varSubs === null || varSubs === void 0 ? void 0 : varSubs.subscribeSet(obj, name, () => {
+            var names = ignore.get(obj);
+
+            if (!names) {
+              names = new Set();
+              ignore.set(obj, names);
+            }
+
+            names.add(name);
+          }).unsubscribe);
+        };
+
         for (var name of item[1]) {
-          subUnsubs.push(this.sandbox.subscribeSet(obj, name, () => {
+          _loop6(name);
+        }
+      };
+
+      for (var item of watchGets) {
+        _loop4(item);
+      }
+
+      var _loop5 = function _loop5(_item) {
+        var obj = _item[0];
+
+        var _loop7 = function _loop7(name) {
+          subUnsubs.push(_this.sandbox.subscribeSetGlobal(obj, name, () => {
+            var _ignore$get;
+
+            if ((_ignore$get = ignore.get(obj)) !== null && _ignore$get !== void 0 && _ignore$get.has(name)) {
+              ignore.get(obj).delete(name);
+              return;
+            }
+
             if (update) return;
             update = true;
             call(() => {
@@ -5195,58 +5311,57 @@ class Skope {
               digest();
             });
           }).unsubscribe);
+        };
+
+        for (var name of _item[1]) {
+          _loop7(name);
         }
+      };
+
+      for (var _item of watchGets) {
+        _loop5(_item);
       }
 
       watchGets.clear();
+      var promise = Promise.resolve(!errorCb ? undefined : val);
+      lastPromise = promise;
+      promise.then(v => {
+        if (lastPromise !== promise) return;
+        v = !errorCb ? val : v;
 
-      if (val !== lastVal) {
-        var temp = lastVal;
-        lastVal = val;
-        handler(val, temp);
-      }
+        if (v !== lastVal) {
+          var temp = lastVal;
+          lastVal = v;
+
+          try {
+            handler(v, temp);
+          } catch (err) {
+            createError(err === null || err === void 0 ? void 0 : err.message, elem);
+          }
+        }
+      }, errorCb);
     };
 
     digest();
     return subUnsubs;
   }
 
-  run(el, code, scopes) {
+  exec(el, code, scopes) {
     el = el || document;
     var codes = this.sandboxCache.get(el) || {};
     this.sandboxCache.set(el, codes);
     var key = 'sync:' + code;
     codes[key] = codes[key] || this.sandbox.compile(code);
-
-    try {
-      return codes[key](...scopes);
-    } catch (err) {
-      var _scopes;
-
-      var elem = (_scopes = scopes[scopes.length - 1]) === null || _scopes === void 0 ? void 0 : _scopes.$el.get(0);
-      err.element = elem;
-      console.error(err);
-      return undefined;
-    }
+    return codes[key](...scopes);
   }
 
-  runAsync(el, code, scopes) {
+  execAsync(el, code, scopes) {
     el = el || document;
     var codes = this.sandboxCache.get(el) || {};
     this.sandboxCache.set(el, codes);
     var key = 'async:' + code;
     codes[key] = codes[key] || this.sandbox.compileAsync(code);
-    return codes[key](...scopes).catch(err => {
-      var _scopes2;
-
-      var elem = (_scopes2 = scopes[scopes.length - 1]) === null || _scopes2 === void 0 ? void 0 : _scopes2.$el.get(0);
-
-      if (err instanceof Error) {
-        err.element = elem;
-      }
-
-      throw err;
-    });
+    return codes[key](...scopes);
   }
 
   defineDirective(name, callback) {
@@ -5256,6 +5371,12 @@ class Skope {
   init(elem, component) {
     var alreadyPreprocessed = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : false;
     var subs = [];
+
+    if (!alreadyPreprocessed) {
+      var sub2 = this.sanitizer.observeAttribute(elem || document.documentElement, 's-static', () => {}, true, true);
+      subs.push(sub2.cancel);
+    }
+
     var sub = this.sanitizer.observeAttribute(elem || document.documentElement, 'skope', el => {
       var comp = component || el.getAttribute('skope');
       var scope = getScope(this, el, subs, this.components[comp] || {}, true);
@@ -5264,12 +5385,6 @@ class Skope {
       processed.run([scope]);
     }, false);
     subs.push(sub.cancel);
-
-    if (!alreadyPreprocessed) {
-      sub = this.sanitizer.observeAttribute(elem || document.documentElement, 's-static', () => {}, true, true);
-      subs.push(sub.cancel);
-    }
-
     return {
       cancel() {
         unsubNested(subs);

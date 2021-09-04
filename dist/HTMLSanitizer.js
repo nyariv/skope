@@ -121,10 +121,21 @@ class HTMLSanitizer {
   observeAttribute(parent, att, cb, staticHtml) {
     var persistant = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : false;
     var subs = new Set();
+    var selector = "[".concat(att, "]:not([").concat(att, "] [").concat(att, "])");
+
+    var sanitize = elem => {
+      if (staticHtml) {
+        for (var el of elem.children) {
+          this.sanitizeHTML(el, staticHtml);
+        }
+      } else {
+        this.sanitizeHTML(elem, staticHtml);
+      }
+    };
 
     function observeLoad(elem, staticHtml) {
       return new Promise(resolve => {
-        this.sanitizeHTML(elem, staticHtml);
+        sanitize(elem);
         var observer = new MutationObserver(muts => {
           for (var mut of muts) {
             for (var target of mut.addedNodes) {
@@ -166,13 +177,13 @@ class HTMLSanitizer {
           for (var elem of mut.addedNodes) {
             if (elem instanceof Element) {
               if (document.readyState === 'loading') {
-                if (!isFound(elem) && elem.matches("[".concat(att, "]:not([").concat(att, "] [").concat(att, "])"))) {
+                if (!isFound(elem) && elem.matches(selector)) {
                   found.add(elem);
                   observeLoad(elem, staticHtml).then(el => {
                     cb(el);
                   });
                 } else {
-                  for (var el of elem.querySelectorAll("[".concat(att, "]:not([").concat(att, "] [").concat(att, "])"))) {
+                  for (var el of elem.querySelectorAll(selector)) {
                     if (!isFound(el)) {
                       found.add(el);
                       observeLoad(el, staticHtml).then(el => {
@@ -181,12 +192,12 @@ class HTMLSanitizer {
                     }
                   }
                 }
-              } else if (elem.matches("[".concat(att, "]:not([").concat(att, "] [").concat(att, "])"))) {
-                this.sanitizeHTML(elem, staticHtml);
+              } else if (elem.matches(selector)) {
+                sanitize(elem);
                 cb(elem);
               } else {
-                for (var _el of elem.querySelectorAll("[".concat(att, "]:not([").concat(att, "] [").concat(att, "])"))) {
-                  this.sanitizeHTML(_el, staticHtml);
+                for (var _el of elem.querySelectorAll(selector)) {
+                  sanitize(elem);
                   cb(_el);
                 }
               }
@@ -214,12 +225,12 @@ class HTMLSanitizer {
       subs.add(sub);
     }
 
-    if (parent.matches("[".concat(att, "]:not([").concat(att, "] [").concat(att, "])"))) {
-      this.sanitizeHTML(parent, staticHtml);
+    if (parent.matches(selector)) {
+      sanitize(parent);
       cb(parent);
     } else {
-      for (var el of parent.querySelectorAll("[".concat(att, "]:not([").concat(att, "] [").concat(att, "])"))) {
-        this.sanitizeHTML(el, staticHtml);
+      for (var el of parent.querySelectorAll(selector)) {
+        sanitize(el);
         cb(el);
       }
     }

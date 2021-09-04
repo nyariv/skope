@@ -1,4 +1,4 @@
-import Sandbox from '@nyariv/sandboxjs';
+import Sandbox, { IExecContext } from '@nyariv/sandboxjs';
 import { wrapType, DelegateObject } from './eQuery';
 import { IElementCollection } from './eQuery';
 import HTMLSanitizer from './HTMLSanitizer';
@@ -20,6 +20,7 @@ interface IRootScope extends IElementScope {
 }
 export interface DirectiveExec {
     element: Element;
+    att: Node;
     directive: string;
     js: string;
     original: string;
@@ -38,7 +39,13 @@ export default class Skope {
     prototypeWhitelist: Map<any, Set<string>>;
     sandbox: Sandbox;
     sandboxCache: WeakMap<Node, {
-        [code: string]: (...scopes: any[]) => any;
+        [code: string]: (...scopes: (any)[]) => {
+            context: IExecContext;
+            run: () => unknown;
+        } | {
+            context: IExecContext;
+            run: () => Promise<unknown>;
+        };
     }>;
     ElementCollection: new (item?: number | Element, ...items: Element[]) => IElementCollection;
     wrap: (selector: wrapType, context?: IElementCollection) => IElementCollection;
@@ -49,11 +56,19 @@ export default class Skope {
     ElementScope: new (el: Element) => IElementScope;
     constructor(options?: {
         sanitizer?: HTMLSanitizer;
+        executionQuote?: bigint;
+        allowRegExp?: boolean;
     });
     defineComponent(name: string, comp: Component): void;
-    watch<T>(toWatch: () => T, handler: (val: T, lastVal: T | undefined) => void | Promise<void>): subs;
-    run(el: Node, code: string, scopes: IElementScope[]): unknown;
-    runAsync(el: Node, code: string, scopes: IElementScope[]): Promise<unknown>;
+    watch<T>(elem: Node, toWatch: () => T, handler: (val: T, lastVal: T | undefined) => void | Promise<void>, errorCb?: (err: Error) => void): subs;
+    exec(el: Node, code: string, scopes: IElementScope[]): {
+        context: IExecContext;
+        run: () => unknown;
+    };
+    execAsync(el: Node, code: string, scopes: IElementScope[]): {
+        context: IExecContext;
+        run: () => Promise<unknown>;
+    };
     defineDirective(name: string, callback: (exce: DirectiveExec, scopes: IElementScope[]) => subs): void;
     init(elem?: Element, component?: string, alreadyPreprocessed?: boolean): {
         cancel: () => void;
