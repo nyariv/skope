@@ -1,7 +1,7 @@
 import HTMLSanitizer from './HTMLSanitizer';
-
 const sanitizer = new HTMLSanitizer();
-const init = import('./Skope').then((mod) => {
+const imps = ['./Skope.js']
+const init = import(imps.pop()).then((mod) => {
   const skope = new mod.default({sanitizer});
   return (el: Element) => skope.init(el, undefined, true);
 });
@@ -22,7 +22,7 @@ subs.push(sub.cancel);
 sub = sanitizer.observeAttribute(document.documentElement, 's-static', () => {}, true, true);
 subs.push(sub.cancel);
 
-export function cancel() {
+(globalThis as any).cancelSkope = function cancel() {
   canceled = true;
   for (let sub of subs) {
     sub();

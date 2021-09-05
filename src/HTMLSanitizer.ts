@@ -281,7 +281,7 @@ export default class HTMLSanitizer {
       }
     }
 
-    function observeLoad(elem: Element, staticHtml: boolean) {
+    const observeLoad = (elem: Element, staticHtml: boolean) => {
       return new Promise<Element>((resolve) => {
         sanitize(elem);
         const observer = new MutationObserver((muts) => {
@@ -293,9 +293,13 @@ export default class HTMLSanitizer {
             }
           }
         });
-        document.addEventListener('DOMContentLoaded', () => {
-          sub();
-          resolve(elem);
+        document.addEventListener('readystatechange', () => {
+          if (document.readyState !== 'loading') {
+            setTimeout(() => {
+              sub();
+              resolve(elem);
+            })
+          }
         });
         observer.observe(elem, {childList: true, subtree: true});
         const sub = () => {
@@ -305,8 +309,15 @@ export default class HTMLSanitizer {
         subs.add(sub);
       });
     }
+
+    const matches = (elem: Element) => {
+      return elem.matches(selector);
+    }
+
+    let loading = false;
   
     if (document.readyState === 'loading' || persistant) {
+      loading = true;
       const found = new WeakSet();
       const isFound = (elem: Element): boolean => {
         if (!elem || elem === parent) return false;
@@ -317,8 +328,8 @@ export default class HTMLSanitizer {
         for (let mut of muts) {
           for (let elem of mut.addedNodes) {
             if (elem instanceof Element) {
-              if (document.readyState === 'loading') {
-                if (!isFound(elem) && elem.matches(selector)) {
+              if (loading) {
+                if (!isFound(elem) && matches(elem)) {
                   found.add(elem);
                   observeLoad(elem, staticHtml).then((el) => {
                     cb(el);
@@ -333,7 +344,7 @@ export default class HTMLSanitizer {
                     }
                   }
                 }
-              } else if (elem.matches(selector)) {
+              } else if (matches(elem)) {
                 sanitize(elem);
                 cb(elem);
               } else {
@@ -347,8 +358,13 @@ export default class HTMLSanitizer {
         }
       });
       if (!persistant) {
-        document.addEventListener('DOMContentLoaded', () => {
-          sub()
+        document.addEventListener('readystatechange', () => {
+          if (document.readyState !== 'loading') {
+            setTimeout(() => {
+              loading = false;
+              sub();
+            })
+          }
         });
       }
       observer.observe(parent, {childList: true, subtree: true});
@@ -359,7 +375,7 @@ export default class HTMLSanitizer {
       subs.add(sub);
     }
   
-    if (parent.matches(selector)) {
+    if (matches(parent)) {
       sanitize(parent);
       cb(parent);
     } else {
