@@ -2,7 +2,8 @@
 
 const regHrefJS = /^\s*javascript\s*:/i;
 const regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
-const regSystemAtt = /^(:|@|\$|s\-|skope)/;const defaultHTMLWhiteList: (new () => Element)[] = [
+const regSystemAtt = /^(:|@|\$|s\-)/;
+const defaultHTMLWhiteList: (new () => Element)[] = [
   HTMLBRElement,
   HTMLBodyElement,
   HTMLDListElement,
@@ -60,7 +61,7 @@ const globalAllowedAtttributes = new Set([
   'width'
 ]);
 
-export function sanitizeType(obj: HTMLSanitizer, t: (new () => Element)[], allowedAttributes: string[], element: (el: Element) => boolean) {
+export function sanitizeType(obj: HTMLSanitizer, t: (new () => Element)[], allowedAttributes: string[], element: (el: Element, preprocess: boolean) => boolean) {
   const s = new Set(allowedAttributes);
   for (let type of t) {
     obj.types.set(type, {attributes: s, element});
@@ -198,9 +199,9 @@ export default class HTMLSanitizer {
     const allowed = this.types.get(element.constructor as new () => Element);
     if (!allowed) return false;
     attName = attName.toLowerCase();
-    if (attName.match(regSystemAtt)) {
+    if (attName.match(regSystemAtt) || attName === 'skope') {
       if (!preprocess) return false;
-    } else if (attName.startsWith('on')) {
+    } else if (/^on[a-z]+$/.test(attName)) {
       if (preprocess) {
         element.setAttribute('@' + attName.slice(2), attValue);
       }
@@ -232,7 +233,7 @@ export default class HTMLSanitizer {
   sanitizeHTML(element: Element|DocumentFragment, staticHtml = false) {
     if (!(element instanceof DocumentFragment)) {
       const allowed = this.types.get(element.constructor as new () => Element);
-      if (!allowed || !allowed.element(element) || (staticHtml && (element instanceof HTMLStyleElement || element instanceof HTMLScriptElement))) {
+      if (!allowed || !allowed.element(element, staticHtml) || (staticHtml && (element instanceof HTMLStyleElement || element instanceof HTMLScriptElement))) {
         element.remove();
         return;
       } else {

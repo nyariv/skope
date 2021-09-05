@@ -912,7 +912,7 @@ export default class Skope {
       const comp = component || el.getAttribute('skope');
       const scope = getScope(this, el, subs, this.components[comp] || {}, true);
       const processed = processHTML(this, el, subs, this.defaultDelegateObject);
-      el.setAttribute('s-processed', '');
+      this.sanitizer.setAttributeForced(el, 'skope-processed', '');
       processed.run([scope]);
     }, false);
 
