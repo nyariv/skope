@@ -167,7 +167,7 @@ function initialize (skope: Skope) {
       this.$el.trigger(eventType, detail, bubbles, cancelable);
     }
     $watch(cb: () => unknown, callback: (val: any, lastVal: any) => void): {unsubscribe: () => void} {
-      const subUnsubs = skope.watch(this.$el.get(0), cb, callback, () => {});
+      const subUnsubs = skope.watch(this.$el.get(0), cb, callback);
       const sub = getStore(this.$el.get(0), 'currentSubs', []);
       sub.push(subUnsubs);
       return { unsubscribe: () => unsubNested(subUnsubs) };
@@ -377,12 +377,16 @@ interface IVarSubs {
 
 const varSubsStore: WeakMap<() => unknown|Promise<unknown>, IVarSubs> = new WeakMap();
 
-function watchRun(skope: Skope, scopes: IElementScope[], code: string): () => unknown {
+function createVarSubs(skope: Skope, context: IExecContext) {
   const varSubs: IVarSubs = {};
+  varSubs.subscribeGet = (callback: (obj: object, name: string) => void) => skope.sandbox.subscribeGet(callback, context);
+  varSubs.subscribeSet = (obj: object, name: string, callback: (modification: Change) => void) => skope.sandbox.subscribeSet(obj, name, callback, context);
+  return varSubs;
+}
+
+function watchRun(skope: Skope, scopes: IElementScope[], code: string): () => unknown {
   const exec = skope.exec(getRootElement(scopes), 'return ' + code, scopes);
-  varSubs.subscribeGet = (callback: (obj: object, name: string) => void) => skope.sandbox.subscribeGet(callback, exec.context);
-  varSubs.subscribeSet = (obj: object, name: string, callback: (modification: Change) => void) => skope.sandbox.subscribeSet(obj, name, callback, exec.context);
-  varSubsStore.set(exec.run, varSubs);
+  varSubsStore.set(exec.run, createVarSubs(skope, exec.context));
   return exec.run;
 }
 
@@ -602,7 +606,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
       if (element.type === 'skopejs') {
         ready((scopes) => {
           try {
-            skope.execAsync(getRootElement(scopes), element.innerHTML, scopes).run();
+            skope.exec(getRootElement(scopes), element.innerHTML, scopes).run();
           } catch (err) {
             createError(err?.message, element);
           }
@@ -813,7 +817,15 @@ export default class Skope {
   watch<T>(elem: Node, toWatch: () => T, handler: (val: T, lastVal: T|undefined) => void|Promise<void>, errorCb?: (err: Error) => void): subs {
     const watchGets: Map<any, Set<string>> = new Map();
     const subUnsubs: subs = [];
-    const varSubs = varSubsStore.get(toWatch);
+    let varSubs = varSubsStore.get(toWatch);
+    if (!varSubs) {
+      const context = this.sandbox.getContext(toWatch);
+      if (!context) {
+        createError('Non-sandbox watch callback', elem);
+        return;
+      }
+      varSubs = createVarSubs(this, context);
+    }
     let lastVal: any;
     let update = false;
     let start = Date.now();
@@ -862,7 +874,7 @@ export default class Skope {
       for (let item of watchGets) {
         const obj = item[0];
         for (let name of item[1]) {
-          subUnsubs.push(this.sandbox.subscribeSetGlobal(obj, name, () => {
+          subUnsubs.push(this.sandbox.subscribeSetGlobal(obj, name, (mod) => {
             if (ignore.get(obj)?.has(name)) {
               ignore.get(obj).delete(name);
               return;
