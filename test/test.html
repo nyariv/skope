@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="../dist/defaultInit.js" type="module"></script>
+  <script src="../dist/defaultInit.js"></script>
   <link rel="stylesheet" href="../dist/skopejs.css">
   <title>Scope.js Test</title>
   <style>
@@ -17,7 +17,7 @@
   </style>
 </head>
 <body>
-  <div><button onclick="import('../dist/defaultInit.js').then((mod) => mod.cancel())">Cancel Skope</button></div>
+  <div><button onclick="cancelSkope()">Cancel Skope</button></div>
   <div skope s-cloak class="containers">
     <div class="rating" $offset="1" $range="[0]">
       <h2>Repeat</h2>
@@ -72,7 +72,7 @@
     <div>
       <h2>Recursion</h2>
 <script>
-let menu = [
+var menu = [
   {
     text: "Item 1", 
     children: []
@@ -120,7 +120,7 @@ let menu = [
   }
 ];
 
-let template = `
+var template = `
 <li s-for="item in children" $children="item.children">
   {{item.text}}
   <ul s-if="item.children.length" s-html="template"></ul>

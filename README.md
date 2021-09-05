@@ -22,7 +22,7 @@ npm i skope
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script src="https://cdn.jsdelivr.net/gh/nyariv/skope@latest/dist/defaultInit.js" type="module"></script>
+  <script src="https://cdn.jsdelivr.net/gh/nyariv/skope@latest/dist/defaultInit.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/nyariv/skope@latest/dist/skopejs.css">
   <meta charset="UTF-8">
 </head>
@@ -53,6 +53,18 @@ Trigger only once
 
 ```html
   <button $var1="false" @click.once="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
+```
+
+Trigger throttled
+
+```html
+  <button $counter="0" @click.throttle(700)="++counter">Throttled count: {{counter}}</button>
+```
+
+Trigger debounced
+
+```html
+  <button $counter="0" @click.debounce(700)="++counter">Debounced count: {{counter}}</button>
 ```
 
 Save event callback promise to variable

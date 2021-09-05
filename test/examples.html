@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script src="../dist/defaultInit.js" type="module"></script>
+  <script src="../dist/defaultInit.js"></script>
   <link rel="stylesheet" href="../dist/skopejs.css">
   <meta charset="UTF-8">
 </head>
@@ -15,6 +15,10 @@
   <button $var1="false" @click="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
 
   <button $var1="false" @click.once="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
+
+  <button $counter="0" @click.throttle(700)="++counter">Throttled count: {{counter}}</button>
+
+  <button $counter="0" @click.debounce(700)="++counter">Debounced count: {{counter}}</button>
 
   <style>
     .red {color: red}
@@ -36,7 +40,7 @@
   <div $var1="'none'">
     <button  @click$var1="await $delay(500); return Math.random()">Event value: {{var1}}</button>
   </div>
-
+  <div class="loader"></div>
   <div $var1 $var2>
     <style>
       .s-transition span {
