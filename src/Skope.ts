@@ -650,20 +650,48 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
         } else if (att.nodeName.startsWith('@')) {
           const transitionParts = att.nodeName.split('$');
           const parts = transitionParts[0].slice(1).split('.');
+          const debouce = /^debounce(\((\d+)\))?$/.exec(parts[1] || "");
+          const throttle = /^throttle(\((\d+)\))?$/.exec(parts[1] || "");
+          if (parts[1] && !(debouce || throttle || parts[1] === 'once')) {
+            createError('Invalid event directive: ' + parts[1], att);
+          }
           const transitionVar = transitionParts[1]?.replace(/\-([\w\$])/g, (match, letter) => letter.toUpperCase());;
           if (transitionVar) {
             if (!regVarName.test(transitionVar)) {
-              createError(`Invalid variable name in attribute ${att.nodeName}`, element);
+              createError(`Invalid variable name in attribute`, att);
               continue;
             }
           }
           ready((scopes) => {
             let trans: Promise<unknown>;
-            const ev = (e: EqEvent) => {
+            const evCb = (e: EqEvent) => {
               trans = skope.execAsync(getRootElement(scopes), att.nodeValue, pushScope(skope, scopes, element, currentSubs, {$event: e})).run();
               trans.catch(() => {});
               if (transitionVar) {
                 skope.exec(getRootElement(scopes), `${transitionVar} = trans`, pushScope(skope, scopes, element, currentSubs, {trans})).run();
+              }
+            }
+            let ev = evCb;
+            if (debouce) {
+              let timer: any = null;
+              ev = (e: EqEvent) => {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                  timer = null;
+                  evCb(e), Number(debouce[2] || 250);
+                });
+              }
+            }
+            if (throttle) {
+              let timer: any = null;
+              let eobj: EqEvent;
+              ev = (e: EqEvent) => {
+                eobj = e;
+                if (timer !== null) return
+                timer = setTimeout(() => {
+                  timer = null;
+                  evCb(eobj);
+                }, Number(throttle[2] || 250));
               }
             }
             if (transitionVar) {
