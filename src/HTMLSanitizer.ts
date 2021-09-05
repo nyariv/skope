@@ -68,8 +68,11 @@ export function sanitizeType(obj: HTMLSanitizer, t: (new () => Element)[], allow
 }
 
 
+let styleIds = 0;
+const reservedAtrributes: WeakMap<Element, Set<string>> = new WeakMap();
+
 export default class HTMLSanitizer {
-  types: Map<new () => Element, {attributes: Set<string>, element: (el: Element) => boolean|void}> = new Map();
+  types: Map<new () => Element, {attributes: Set<string>, element: (el: Element, preprocess: boolean) => boolean|void}> = new Map();
   srcAttributes = new Set(['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from']);
   allowedInputs = new Set([
     'button',
@@ -143,7 +146,36 @@ export default class HTMLSanitizer {
       }
       return el.type === "skopejs";
     });
-    sanitizeType(this, [HTMLStyleElement], [], (el: Element) => { return true; });
+
+    const processedStyles: WeakSet<HTMLStyleElement> = new WeakSet();
+    sanitizeType(this, [HTMLStyleElement], [], (el: HTMLStyleElement) => {
+      const parent = el.parentElement;
+      if (!parent) return false;
+      if (processedStyles.has(el)) return true;
+      processedStyles.add(el);
+      if (!this.isAttributeForced(parent, 'skope-style')) {
+        parent.removeAttribute('skope-style');
+      }
+      const id = parent.getAttribute('skope-style') || ++styleIds;
+      this.setAttributeForced(parent, 'skope-style', id + "");
+      let i = el.sheet.cssRules.length - 1;
+      for (let rule of [...el.sheet.cssRules].reverse()) {
+        if (!(rule instanceof CSSStyleRule)) {
+          el.sheet.deleteRule(i);
+        }
+        i--;
+      }
+      i = 0;
+      for (let rule of [...el.sheet.cssRules]) {
+        if (rule instanceof CSSStyleRule) {
+          var cssText = rule.style.cssText;
+          el.sheet.deleteRule(i);
+          el.sheet.insertRule(`[skope-style="${id}"] :is(${rule.selectorText}) { ${cssText} }`, i);
+        }
+        i++;
+      }
+      return true; 
+    });
     sanitizeType(this, [HTMLPictureElement, 
                   HTMLImageElement, 
                   HTMLAudioElement,
@@ -207,7 +239,7 @@ export default class HTMLSanitizer {
         for (let att of [...element.attributes]) {
           const attValue = att.nodeValue;
           const attName = att.nodeName;
-          if (!this.santizeAttribute(element, attName, attValue, !staticHtml) || (staticHtml && ["id", "style"].includes(attName))) {
+          if (!reservedAtrributes.get(element)?.has(attName) && (!this.santizeAttribute(element, attName, attValue, !staticHtml) || (staticHtml && ["id", "style"].includes(attName)))) {
             element.removeAttribute(att.nodeName);
           }
         }
@@ -218,6 +250,20 @@ export default class HTMLSanitizer {
         this.sanitizeHTML(el, staticHtml);
       }
     }
+  }
+
+  isAttributeForced(elem: Element, att: string) {
+    return reservedAtrributes.get(elem)?.has(att);
+  }
+
+  setAttributeForced(elem: Element, att: string, value: string) {
+    let reserved = reservedAtrributes.get(elem);
+    if (!reserved) {
+      reserved = new Set();
+      reservedAtrributes.set(elem, reserved);
+    }
+    reserved.add(att);
+    elem.setAttribute(att, value);
   }
 
   observeAttribute(parent: Element, att: string, cb: (elem: Element) => void, staticHtml: boolean, persistant = false): {cancel: () => void} {
