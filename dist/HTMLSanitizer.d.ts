@@ -1,14 +1,16 @@
-export declare function sanitizeType(obj: HTMLSanitizer, t: (new () => Element)[], allowedAttributes: string[], element: (el: Element) => boolean): void;
+export declare function sanitizeType(obj: HTMLSanitizer, t: (new () => Element)[], allowedAttributes: string[], element: (el: Element, preprocess: boolean) => boolean): void;
 export default class HTMLSanitizer {
     types: Map<new () => Element, {
         attributes: Set<string>;
-        element: (el: Element) => boolean | void;
+        element: (el: Element, staticHtml: boolean) => boolean | void;
     }>;
     srcAttributes: Set<string>;
     allowedInputs: Set<string>;
     constructor();
     santizeAttribute(element: Element, attName: string, attValue: string, preprocess?: boolean): boolean;
     sanitizeHTML(element: Element | DocumentFragment, staticHtml?: boolean): void;
+    isAttributeForced(elem: Element, att: string): boolean;
+    setAttributeForced(elem: Element, att: string, value: string): void;
     observeAttribute(parent: Element, att: string, cb: (elem: Element) => void, staticHtml: boolean, persistant?: boolean): {
         cancel: () => void;
     };

@@ -1,1 +1,1 @@
-export declare function cancel(): void;
+export {};

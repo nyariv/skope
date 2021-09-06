@@ -48,7 +48,7 @@ export default class Skope {
         };
     }>;
     ElementCollection: new (item?: number | Element, ...items: Element[]) => IElementCollection;
-    wrap: (selector: wrapType, context?: IElementCollection) => IElementCollection;
+    wrap: (selector: wrapType, context: IElementCollection | Document) => IElementCollection;
     defaultDelegateObject: DelegateObject;
     getStore: <T>(elem: Node, store: string, defaultValue?: T) => T;
     deleteStore: (elem: Element, store: string) => boolean;
@@ -60,6 +60,7 @@ export default class Skope {
         allowRegExp?: boolean;
     });
     defineComponent(name: string, comp: Component): void;
+    wrapElem(el: Element): IElementCollection;
     watch<T>(elem: Node, toWatch: () => T, handler: (val: T, lastVal: T | undefined) => void | Promise<void>, errorCb?: (err: Error) => void): subs;
     exec(el: Node, code: string, scopes: IElementScope[]): {
         context: IExecContext;

@@ -1,5 +1,3 @@
-import HTMLSanitizer from './HTMLSanitizer.js';
-
 function getDefaultExportFromCjs (x) {
 	return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, 'default') ? x['default'] : x;
 }
@@ -1847,6 +1845,7 @@ var Sandbox$1 = {};
       };
     }
 
+    context.registerSandboxFunction(func);
     sandboxedFunctions.add(func);
     return func;
   }
@@ -1878,6 +1877,7 @@ var Sandbox$1 = {};
       };
     }
 
+    context.registerSandboxFunction(func);
     sandboxedFunctions.add(func);
     return func;
   }
@@ -3120,7 +3120,7 @@ var Sandbox$1 = {};
   }
 
   class ExecContext {
-    constructor(ctx, constants, tree, getSubscriptions, setSubscriptions, changeSubscriptions, setSubscriptionsGlobal, changeSubscriptionsGlobal, evals) {
+    constructor(ctx, constants, tree, getSubscriptions, setSubscriptions, changeSubscriptions, setSubscriptionsGlobal, changeSubscriptionsGlobal, evals, registerSandboxFunction) {
       this.ctx = ctx;
       this.constants = constants;
       this.tree = tree;
@@ -3130,6 +3130,7 @@ var Sandbox$1 = {};
       this.setSubscriptionsGlobal = setSubscriptionsGlobal;
       this.changeSubscriptionsGlobal = changeSubscriptionsGlobal;
       this.evals = evals;
+      this.registerSandboxFunction = registerSandboxFunction;
     }
 
   }
@@ -3160,6 +3161,7 @@ var Sandbox$1 = {};
     constructor(options) {
       this.setSubscriptions = new WeakMap();
       this.changeSubscriptions = new WeakMap();
+      this.sandboxFunctions = new WeakMap();
       options = Object.assign({
         audit: false,
         forbidFunctionCalls: false,
@@ -3282,13 +3284,17 @@ var Sandbox$1 = {};
 
     createContext(context, executionTree) {
       const evals = new Map();
-      const execContext = new ExecContext(context, executionTree.constants, executionTree.tree, new Set(), new WeakMap(), new WeakMap(), this.setSubscriptions, this.changeSubscriptions, evals);
+      const execContext = new ExecContext(context, executionTree.constants, executionTree.tree, new Set(), new WeakMap(), new WeakMap(), this.setSubscriptions, this.changeSubscriptions, evals, fn => this.sandboxFunctions.set(fn, execContext));
       const func = sandboxFunction(execContext);
       evals.set(Function, func);
       evals.set(eval, sandboxedEval(func));
       evals.set(setTimeout, sandboxedSetTimeout(func));
       evals.set(setInterval, sandboxedSetInterval(func));
       return execContext;
+    }
+
+    getContext(fn) {
+      return this.sandboxFunctions.get(fn);
     }
 
     executeTree(context, scopes = []) {
@@ -3382,6 +3388,11 @@ var Sandbox$1 = {};
 var Sandbox = /*@__PURE__*/getDefaultExportFromCjs(Sandbox$1);
 
 var elementStorage = new WeakMap();
+function ownerDoc(coll) {
+  var _coll$get;
+
+  return (_coll$get = coll.get(0)) === null || _coll$get === void 0 ? void 0 : _coll$get.ownerDocument;
+}
 function createClass(sanitizer) {
   var arrs = new WeakMap();
 
@@ -3391,13 +3402,13 @@ function createClass(sanitizer) {
 
   var defaultDelegateObject = {
     on(elem, event, callback) {
-      var $el = wrap(elem);
+      var $el = wrap(elem, elem.ownerDocument);
       $el.on(event, callback);
       return () => $el.off(event, callback);
     },
 
     one(elem, event, callback) {
-      var $el = wrap(elem);
+      var $el = wrap(elem, elem.ownerDocument);
       $el.one(event, callback);
       return () => $el.off(event, callback);
     },
@@ -3493,7 +3504,7 @@ function createClass(sanitizer) {
         return this.some(elem => elem.matches(selector));
       }
 
-      var sel = (selector instanceof ElementCollection ? selector : wrap(selector)).toSet();
+      var sel = (selector instanceof ElementCollection ? selector : wrap(selector, this)).toSet();
       return this.some(elem => sel.has(elem));
     }
 
@@ -3502,7 +3513,7 @@ function createClass(sanitizer) {
         return filter(this, (elem, i) => !elem.matches(selector));
       }
 
-      var sel = (selector instanceof ElementCollection ? selector : wrap(selector)).toSet();
+      var sel = (selector instanceof ElementCollection ? selector : wrap(selector, this)).toSet();
       return filter(this, (elem, i) => !sel.has(elem));
     }
 
@@ -3521,7 +3532,7 @@ function createClass(sanitizer) {
         });
       }
 
-      var sel = selector instanceof ElementCollection ? selector : wrap(selector);
+      var sel = selector instanceof ElementCollection ? selector : wrap(selector, this);
       return filter(this, (elem, i) => sel.some(test => elem !== test && elem.contains(test)));
     }
 
@@ -3606,7 +3617,7 @@ function createClass(sanitizer) {
       var opt = typeof callback === 'function' ? options : callback;
       objectOrProp(events, cb, (ev, handler) => {
         this.forEach(elem => {
-          var $el = wrap(elem);
+          var $el = wrap(elem, elem.ownerDocument);
 
           var evcb = evt => {
             $el.off(ev, evcb);
@@ -3854,7 +3865,7 @@ function createClass(sanitizer) {
     }
 
     vals(set) {
-      var $elems = wrap([this.filter('input[name], select[name], textarea[name]'), this.find('input[name], select[name], textarea[name]')]);
+      var $elems = wrap([this.filter('input[name], select[name], textarea[name]'), this.find('input[name], select[name], textarea[name]')], this);
       var res = {};
 
       if (set === undefined) {
@@ -3868,7 +3879,7 @@ function createClass(sanitizer) {
               res[elem.name] = elem.value;
             }
           } else {
-            res[elem.name] = wrap(elem).val();
+            res[elem.name] = wrap(elem, elem.ownerDocument).val();
           }
         });
       } else {
@@ -3879,7 +3890,7 @@ function createClass(sanitizer) {
           if (elem instanceof HTMLInputElement && elem.type === 'radio') {
             elem.checked = set[elem.name] === elem.value;
           } else {
-            wrap(elem).val(set[elem.name]);
+            wrap(elem, elem.ownerDocument).val(set[elem.name]);
           }
         });
       }
@@ -3908,7 +3919,8 @@ function createClass(sanitizer) {
 
       var get = test => test && test.length && test;
 
-      return get(this.attr('aria-label')) || get(get(this.attr('aria-labelledby')) && wrap('#' + this.attr('aria-labelledby')).label()) || get(get(this.attr('id')) && wrap('label[for="' + this.attr('id') + '"]').label()) || get(this.attr('title')) || get(this.attr('placeholder')) || get(this.attr('alt')) || (get(this.text()) || "").trim();
+      var owner = this;
+      return get(this.attr('aria-label')) || get(get(this.attr('aria-labelledby')) && wrap('#' + this.attr('aria-labelledby'), owner).label()) || get(get(this.attr('id')) && wrap('label[for="' + this.attr('id') + '"]', owner).label()) || get(this.attr('title')) || get(this.attr('placeholder')) || get(this.attr('alt')) || (get(this.text()) || "").trim();
     }
 
     data(key, set) {
@@ -3989,7 +4001,7 @@ function createClass(sanitizer) {
         return ind >= this.length ? -1 : ind;
       }
 
-      var sel = (selector instanceof ElementCollection ? selector : wrap(selector)).toSet();
+      var sel = (selector instanceof ElementCollection ? selector : wrap(selector, this)).toSet();
       this.forEach(elem => !(sel.has(elem) || ind++ && false));
       return ind >= this.length ? -1 : ind;
     }
@@ -4038,16 +4050,24 @@ function createClass(sanitizer) {
     }
 
     siblings(selector) {
-      return wrap([propElem(this, 'nextElementSibling', selector, true), propElem(this, 'previousElementSibling', selector, true, false, false, true)]);
+      return wrap([propElem(this, 'nextElementSibling', selector, true), propElem(this, 'previousElementSibling', selector, true, false, false, true)], this);
     }
 
     children(selector) {
       return from(propElem(this.map(elem => elem.firstElementChild), 'nextElementSibling', selector, true, true));
     }
 
-  }
+    iframeInner() {
+      var elem = this.get(0);
 
-  var $document = wrap(document.documentElement);
+      if (!(elem instanceof HTMLIFrameElement)) {
+        return new ElementCollection();
+      }
+
+      return new ElementCollection(elem.contentDocument.body);
+    }
+
+  }
 
   function wrapEvent(originalEvent) {
     if (originalEvent.isEqEvent) {
@@ -4121,54 +4141,19 @@ function createClass(sanitizer) {
       return from(selector);
     }
 
-    if (!context && typeof selector === 'string') return from(document.querySelectorAll(selector));
-    if (!context && selector instanceof Element) return new ElementCollection(selector);
-    if (!context && selector instanceof ElementCollection) return filter(selector).unique().sort();
+    if (!context) return new ElementCollection();
+    var doc = context instanceof ElementCollection ? ownerDoc(context) : context;
     var selectors = selector instanceof Array ? selector : [selector];
-    var $context = context ? context instanceof ElementCollection ? context : wrap(context) : $document;
+    var $context = context instanceof ElementCollection ? context : new ElementCollection(doc.documentElement);
     var elems = new Set();
-    var doFilter = !!context;
+    var doFilter = true;
     var doSort = selectors.length > 1;
     if (selectors.length === 1 && $context.length === 1 && selectors[0] === arr($context)[0] || $context === selector) return $context;
 
     var _loop = function _loop(sel) {
-      if (sel instanceof ElementCollection) {
-        sel.forEach(elem => {
-          if (elem instanceof Element) elems.add(elem);
-        });
-      } else if (sel instanceof Element) {
-        if (!context && selectors.length === 1) {
-          return {
-            v: new ElementCollection(sel)
-          };
-        }
-
+      if (sel instanceof Element) {
         elems.add(sel);
-      } else if (sel instanceof NodeList) {
-        for (var i = 0; i < sel.length; i++) {
-          var elem = sel[i];
-
-          if (elem instanceof Element) {
-            elems.add(elem);
-          }
-        }
-      } else if (sel instanceof HTMLCollection) {
-        if (!context && selectors.length === 1) {
-          return {
-            v: from(sel)
-          };
-        }
-
-        from(sel).forEach(elem => {
-          elems.add(elem);
-        });
       } else if (typeof sel === 'string') {
-        if (!context && selectors.length === 1) {
-          return {
-            v: from(document.querySelectorAll(sel))
-          };
-        }
-
         $context.forEach(cElem => {
           cElem.querySelectorAll(':scope ' + sel).forEach(elem => elems.add(elem));
         });
@@ -4177,25 +4162,17 @@ function createClass(sanitizer) {
           doFilter = false;
           doSort = false;
         }
-      } else if (sel instanceof Set) {
-        sel.forEach(elem => {
-          if (elem instanceof Element) {
-            elems.add(elem);
-          }
-        });
       } else {
-        from(sel).forEach(elem => {
+        for (var elem of sel) {
           if (elem instanceof Element) {
             elems.add(elem);
           }
-        });
+        }
       }
     };
 
     for (var sel of selectors) {
-      var _ret = _loop(sel);
-
-      if (typeof _ret === "object") return _ret.v;
+      _loop(sel);
     }
 
     var res = from(elems);
@@ -4224,7 +4201,7 @@ function createClass(sanitizer) {
       return filter(elems, elem => elem.matches(selector));
     }
 
-    var sel = (selector instanceof ElementCollection ? selector : wrap(selector)).toSet();
+    var sel = (selector instanceof ElementCollection ? selector : wrap(selector, this)).toSet();
     return filter(elems, elem => sel.has(elem));
   }
 
@@ -4355,9 +4332,344 @@ function createClass(sanitizer) {
     ElementCollection,
     getStore,
     deleteStore,
-    $document,
     defaultDelegateObject
   };
+}
+
+var regHrefJS = /^\s*javascript\s*:/i;
+var regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
+var regSystemAtt = /^(:|@|\$|s\-)/;
+var defaultHTMLWhiteList = [HTMLBRElement, HTMLBodyElement, HTMLDListElement, HTMLDataElement, HTMLDataListElement, HTMLDialogElement, HTMLDivElement, HTMLFieldSetElement, HTMLFormElement, HTMLHRElement, HTMLHeadingElement, HTMLLIElement, HTMLLegendElement, HTMLMapElement, HTMLMetaElement, HTMLMeterElement, HTMLModElement, HTMLOListElement, HTMLOutputElement, HTMLParagraphElement, HTMLPreElement, HTMLProgressElement, HTMLQuoteElement, HTMLSpanElement, HTMLTableCaptionElement, HTMLTableCellElement, HTMLTableColElement, HTMLTableElement, HTMLTableSectionElement, HTMLTableRowElement, HTMLTimeElement, HTMLTitleElement, HTMLUListElement, HTMLUnknownElement, HTMLTemplateElement, HTMLCanvasElement, HTMLElement];
+var globalAllowedAtttributes = new Set(['id', 'class', 'style', 'alt', 'role', 'aria-label', 'aria-labelledby', 'aria-hidden', 'tabindex', 'title', 'dir', 'lang', 'height', 'width']);
+function sanitizeType(obj, t, allowedAttributes, element) {
+  var s = new Set(allowedAttributes);
+
+  for (var type of t) {
+    obj.types.set(type, {
+      attributes: s,
+      element
+    });
+  }
+}
+var styleIds = 0;
+var reservedAtrributes = new WeakMap();
+class HTMLSanitizer {
+  constructor() {
+    this.types = new Map();
+    this.srcAttributes = new Set(['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from']);
+    this.allowedInputs = new Set(['button', 'checkbox', 'color', 'date', 'datetime-local', 'email', 'file', 'month', 'number', 'password', 'radio', 'range', 'reset', 'tel', 'text', 'time', 'url', 'week']);
+    sanitizeType(this, defaultHTMLWhiteList, [], () => {
+      return true;
+    });
+    sanitizeType(this, [HTMLAnchorElement, HTMLAreaElement], ['href', 'xlink:href', 'rel', 'shape', 'coords'], el => {
+      return true;
+    });
+    sanitizeType(this, [HTMLButtonElement], ['type', 'value'], el => {
+      if (el.type !== "reset" && el.type !== "button") {
+        el.type = "button";
+      }
+
+      return true;
+    });
+    sanitizeType(this, [HTMLInputElement, HTMLSelectElement, HTMLOptGroupElement, HTMLOptionElement, HTMLLabelElement, HTMLTextAreaElement], ['value', 'type', 'checked', 'selected', 'name', 'for', 'max', 'min', 'placeholder', 'readonly', 'size', 'multiple', 'step', 'autocomplete', 'cols', 'rows', 'maxlength', 'disabled', 'required', 'accept', 'list'], el => {
+      return true;
+    });
+    sanitizeType(this, [HTMLScriptElement], ['type'], (el, staticHtml) => {
+      if (!el.type || el.type === 'text/javascript') {
+        el.type = 'skopejs';
+      }
+
+      return !staticHtml && el.type === "skopejs";
+    });
+    sanitizeType(this, [HTMLIFrameElement], [], el => {
+      this.setAttributeForced(el, 'skope-iframe-content', el.innerHTML);
+      el.innerHTML = '';
+      return !el.src && !el.srcdoc;
+    });
+    var processedStyles = new WeakSet();
+    sanitizeType(this, [HTMLStyleElement], [], (el, staticHtml) => {
+      if (staticHtml) return false;
+
+      var loaded = () => {
+        var parent = el.parentElement;
+        if (!parent) return false;
+        if (processedStyles.has(el)) return true;
+        processedStyles.add(el);
+
+        if (!this.isAttributeForced(parent, 'skope-style')) {
+          parent.removeAttribute('skope-style');
+        }
+
+        var id = parent.getAttribute('skope-style') || ++styleIds;
+        this.setAttributeForced(parent, 'skope-style', id + "");
+        var i = el.sheet.cssRules.length - 1;
+
+        for (var rule of [...el.sheet.cssRules].reverse()) {
+          if (!(rule instanceof CSSStyleRule || rule instanceof CSSKeyframesRule)) {
+            el.sheet.deleteRule(i);
+          }
+
+          i--;
+        }
+
+        i = 0;
+
+        for (var _rule of [...el.sheet.cssRules]) {
+          if (_rule instanceof CSSStyleRule) {
+            var cssText = _rule.style.cssText;
+            el.sheet.deleteRule(i);
+            el.sheet.insertRule("[skope-style=\"".concat(id, "\"] :is(").concat(_rule.selectorText, ") { ").concat(cssText, " }"), i);
+          }
+
+          i++;
+        }
+      };
+
+      if (el.sheet && el.parentElement) {
+        loaded();
+      } else {
+        el.addEventListener('load', loaded);
+      }
+
+      return true;
+    });
+    sanitizeType(this, [HTMLPictureElement, HTMLImageElement, HTMLAudioElement, HTMLTrackElement, HTMLVideoElement, HTMLSourceElement], ['src', 'srcset', 'sizes', 'poster', 'autoplay', 'contorls', 'muted', 'loop', 'volume', 'loading'], el => {
+      return true;
+    });
+  }
+
+  santizeAttribute(element, attName, attValue) {
+    var preprocess = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
+    var allowed = this.types.get(element.constructor);
+    if (!allowed) return false;
+    attName = attName.toLowerCase();
+
+    if (attName.match(regSystemAtt) || attName === 'skope') {
+      if (!preprocess) return false;
+    } else if (/^on[a-z]+$/.test(attName)) {
+      if (preprocess) {
+        element.setAttribute('@' + attName.slice(2), attValue);
+      }
+
+      return false;
+    } else if (allowed.attributes.has(attName) && this.srcAttributes.has(attName) && attValue !== 'javascript:void(0)') {
+      var isJs = attValue.match(regHrefJS);
+
+      if (isJs) {
+        if (preprocess && (attName === 'href' || attName === 'xlink:href')) {
+          if (!element.hasAttribute('@click')) {
+            element.setAttribute('@click', attValue.substring(isJs[0].length));
+          }
+
+          element.setAttribute(attName, 'javascript:void(0)');
+        } else {
+          return false;
+        }
+      } else if (!attValue.match(regValidSrc)) {
+        return false;
+      }
+    } else if (!allowed.attributes.has(attName) && !globalAllowedAtttributes.has(attName)) {
+      return false;
+    } else if (element instanceof HTMLInputElement && attName == 'type') {
+      return this.allowedInputs.has(attValue);
+    } else if (element instanceof HTMLButtonElement && attName == 'type') {
+      return attValue === 'reset' || attValue === 'button';
+    }
+
+    return true;
+  }
+
+  sanitizeHTML(element) {
+    var staticHtml = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
+
+    if (!(element instanceof DocumentFragment)) {
+      var allowed = this.types.get(element.constructor);
+
+      if (!allowed || !allowed.element(element, staticHtml)) {
+        element.remove();
+        return;
+      } else {
+        for (var att of [...element.attributes]) {
+          var _reservedAtrributes$g;
+
+          var attValue = att.nodeValue;
+          var attName = att.nodeName;
+
+          if (!((_reservedAtrributes$g = reservedAtrributes.get(element)) !== null && _reservedAtrributes$g !== void 0 && _reservedAtrributes$g.has(attName)) && (!this.santizeAttribute(element, attName, attValue, !staticHtml) || staticHtml && ["id", "style"].includes(attName))) {
+            element.removeAttribute(att.nodeName);
+          }
+        }
+      }
+    }
+
+    if (element.children) {
+      for (var el of [...element.children]) {
+        this.sanitizeHTML(el, staticHtml);
+      }
+    }
+  }
+
+  isAttributeForced(elem, att) {
+    var _reservedAtrributes$g2;
+
+    return (_reservedAtrributes$g2 = reservedAtrributes.get(elem)) === null || _reservedAtrributes$g2 === void 0 ? void 0 : _reservedAtrributes$g2.has(att);
+  }
+
+  setAttributeForced(elem, att, value) {
+    var reserved = reservedAtrributes.get(elem);
+
+    if (!reserved) {
+      reserved = new Set();
+      reservedAtrributes.set(elem, reserved);
+    }
+
+    reserved.add(att);
+    elem.setAttribute(att, value);
+  }
+
+  observeAttribute(parent, att, cb, staticHtml) {
+    var persistant = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : false;
+    var subs = new Set();
+    var selector = "[".concat(att, "]:not([").concat(att, "] [").concat(att, "])");
+
+    var sanitize = elem => {
+      if (staticHtml) {
+        for (var el of elem.children) {
+          this.sanitizeHTML(el, staticHtml);
+        }
+      } else {
+        this.sanitizeHTML(elem, staticHtml);
+      }
+    };
+
+    var observeLoad = (elem, staticHtml) => {
+      return new Promise(resolve => {
+        sanitize(elem);
+        var observer = new MutationObserver(muts => {
+          for (var mut of muts) {
+            for (var target of mut.addedNodes) {
+              if (target instanceof Element) {
+                this.sanitizeHTML(target, staticHtml);
+              }
+            }
+          }
+        });
+        document.addEventListener('readystatechange', () => {
+          if (document.readyState !== 'loading') {
+            setTimeout(() => {
+              sub();
+              resolve(elem);
+            });
+          }
+        });
+        observer.observe(elem, {
+          childList: true,
+          subtree: true
+        });
+
+        var sub = () => {
+          observer.disconnect();
+          subs.delete(sub);
+        };
+
+        subs.add(sub);
+      });
+    };
+
+    var matches = elem => {
+      return elem.matches(selector);
+    };
+
+    var loading = false;
+
+    if (document.readyState === 'loading' || persistant) {
+      loading = true;
+      var found = new WeakSet();
+
+      var isFound = elem => {
+        if (!elem || elem === parent) return false;
+        if (found.has(elem)) return true;
+        return isFound(elem.parentElement);
+      };
+
+      var observer = new MutationObserver(muts => {
+        for (var mut of muts) {
+          for (var elem of mut.addedNodes) {
+            if (elem instanceof Element) {
+              if (loading) {
+                if (!isFound(elem) && matches(elem)) {
+                  found.add(elem);
+                  observeLoad(elem, staticHtml).then(el => {
+                    cb(el);
+                  });
+                } else {
+                  for (var el of elem.querySelectorAll(selector)) {
+                    if (!isFound(el)) {
+                      found.add(el);
+                      observeLoad(el, staticHtml).then(el => {
+                        cb(el);
+                      });
+                    }
+                  }
+                }
+              } else if (matches(elem)) {
+                sanitize(elem);
+                cb(elem);
+              } else {
+                for (var _el of elem.querySelectorAll(selector)) {
+                  sanitize(elem);
+                  cb(_el);
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!persistant) {
+        document.addEventListener('readystatechange', () => {
+          if (document.readyState !== 'loading') {
+            setTimeout(() => {
+              loading = false;
+              sub();
+            });
+          }
+        });
+      }
+
+      observer.observe(parent, {
+        childList: true,
+        subtree: true
+      });
+
+      var sub = () => {
+        observer.disconnect();
+        subs.delete(sub);
+      };
+
+      subs.add(sub);
+    }
+
+    if (matches(parent)) {
+      sanitize(parent);
+      cb(parent);
+    } else {
+      for (var el of parent.querySelectorAll(selector)) {
+        sanitize(el);
+        cb(el);
+      }
+    }
+
+    return {
+      cancel() {
+        for (var _sub of subs) {
+          _sub();
+        }
+      }
+
+    };
+  }
+
 }
 
 var regVarName = /^\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*$/;
@@ -4497,7 +4809,6 @@ function initialize(skope) {
     ElementCollection,
     getStore,
     deleteStore,
-    $document,
     defaultDelegateObject
   } = eQuery;
   skope.defaultDelegateObject = defaultDelegateObject;
@@ -4507,7 +4818,7 @@ function initialize(skope) {
 
   class ElementScope {
     constructor(element) {
-      this.$el = wrap(element);
+      this.$el = wrap(element, element.ownerDocument);
     }
 
     $dispatch(eventType, detail) {
@@ -4517,7 +4828,7 @@ function initialize(skope) {
     }
 
     $watch(cb, callback) {
-      var subUnsubs = skope.watch(this.$el.get(0), cb, callback, () => {});
+      var subUnsubs = skope.watch(this.$el.get(0), cb, callback);
       var sub = getStore(this.$el.get(0), 'currentSubs', []);
       sub.push(subUnsubs);
       return {
@@ -4550,25 +4861,56 @@ function initialize(skope) {
       return (_this$get = this.get(0)) === null || _this$get === void 0 ? void 0 : _this$get.innerHTML;
     }
 
+    var elem = this.get(0);
+    if (!elem) return this;
     var contentElem;
 
     if (content instanceof ElementCollection) {
       content = content.detach();
     }
 
-    var elem = this.get(0);
-    if (!elem) return this;
-    contentElem = preprocessHTML(skope, elem, content);
     var currentSubs = getStore(elem, 'currentSubs', []);
+    var scopes = getScopes(skope, elem, currentSubs);
 
-    for (var el of [...elem.children]) {
-      unsubNested(getStore(el, 'currentSubs'));
+    if (elem instanceof HTMLIFrameElement) {
+      var prev = elem;
+      unsubNested(getStore(elem.contentDocument.body, 'currentSubs'));
+      elem = document.createElement('body');
+      var prevSub = currentSubs;
+      currentSubs = getStore(elem, 'currentSubs', []);
+      prevSub.push(currentSubs);
+      getStore(elem, 'currentSubs', currentSubs);
+      getStore(elem, 'scopes', scopes);
+      var sty = document.createElement('style');
+      sty.innerHTML = 'body { padding: 0; margin: 0; }';
+      prev.contentDocument.head.appendChild(sty);
+      prev.contentDocument.body.replaceWith(elem);
+
+      var recurse = el => {
+        if (!el || !el.parentElement || el.matches('[skope]')) return [];
+        var styles = recurse(el.parentElement);
+        styles.push(...skope.wrapElem(el.parentElement).children('style').map(el => el.innerHTML));
+        return styles;
+      };
+
+      recurse(prev).forEach(css => {
+        var st = document.createElement('style');
+        st.innerHTML = css;
+        prev.contentDocument.body.appendChild(st);
+      });
+    } else {
+      for (var el of [...elem.children]) {
+        unsubNested(getStore(el, 'currentSubs'));
+      }
+
+      elem.innerHTML = '';
     }
 
-    var processed = processHTML(skope, contentElem, currentSubs, defaultDelegateObject);
-    elem.innerHTML = '';
-    elem.appendChild(processed.elem);
-    processed.run(getScopes(skope, elem, currentSubs, {}));
+    contentElem = preprocessHTML(skope, elem, content);
+    scopes = getScopes(skope, elem, currentSubs, {});
+    elem.appendChild(contentElem);
+    var processed = processHTML(skope, elem, currentSubs, defaultDelegateObject, true);
+    processed.run(scopes);
     return this;
   };
 
@@ -4613,9 +4955,9 @@ function initialize(skope) {
   });
   skope.defineDirective('text', (exec, scopes) => {
     return skope.watch(exec.att, watchRun(skope, scopes, exec.js), (val, lastVal) => {
-      skope.wrap(exec.element).text(val + "");
+      skope.wrapElem(exec.element).text(val + "");
     }, () => {
-      skope.wrap(exec.element).text("");
+      skope.wrapElem(exec.element).text("");
     });
   });
   skope.defineDirective('ref', (exec, scopes) => {
@@ -4634,7 +4976,7 @@ function initialize(skope) {
   skope.defineDirective('model', (exec, scopes) => {
     var el = exec.element;
     var isContentEditable = el instanceof HTMLElement && (el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === '');
-    var $el = skope.wrap(el);
+    var $el = skope.wrapElem(el);
     var last = !isContentEditable ? $el.val() : $el.html();
 
     if (!el.hasAttribute('name')) {
@@ -4661,7 +5003,7 @@ function initialize(skope) {
     sub.push(exec.delegate.on(el, 'input', change));
 
     if (el.form) {
-      var $form = skope.wrap(el.form);
+      var $form = skope.wrap(el.form, el.ownerDocument);
       sub.push($form.delegate().on($form.get(0), 'reset', () => reset = !!setTimeout(change)));
     }
 
@@ -4683,14 +5025,14 @@ function initialize(skope) {
   skope.defineDirective('html', (exec, scopes) => {
     return skope.watch(exec.att, watchRun(skope, scopes, exec.js), (val, lastVal) => {
       if (val instanceof Node || typeof val === 'string' || val instanceof this.ElementCollection) {
-        skope.wrap(exec.element).html(val);
+        skope.wrapElem(exec.element).html(val);
       }
     }, () => {
-      skope.wrap(exec.element).html("");
+      skope.wrapElem(exec.element).html("");
     });
   });
   skope.defineDirective('transition', (exec, scopes) => {
-    var $el = skope.wrap(exec.element);
+    var $el = skope.wrapElem(exec.element);
     $el.addClass('s-transition');
     $el.addClass('s-transition-idle');
     var lastPromise;
@@ -4744,22 +5086,26 @@ function getScopes(skope, element) {
   var newScope = arguments.length > 3 ? arguments[3] : undefined;
   if (!element) return [];
   var scope = newScope === undefined ? skope.getStore(element, 'scope') : getScope(skope, element, subs, newScope);
-  var scopes = [];
+  var scopes = skope.getStore(element, 'scopes') || [];
   if (scope) scopes.push(scope);
   return [...(element.hasAttribute('s-detached') ? [] : getScopes(skope, element.parentElement)), ...scopes];
 }
 
 var varSubsStore = new WeakMap();
 
-function watchRun(skope, scopes, code) {
+function createVarSubs(skope, context) {
   var varSubs = {};
+
+  varSubs.subscribeGet = callback => skope.sandbox.subscribeGet(callback, context);
+
+  varSubs.subscribeSet = (obj, name, callback) => skope.sandbox.subscribeSet(obj, name, callback, context);
+
+  return varSubs;
+}
+
+function watchRun(skope, scopes, code) {
   var exec = skope.exec(getRootElement(scopes), 'return ' + code, scopes);
-
-  varSubs.subscribeGet = callback => skope.sandbox.subscribeGet(callback, exec.context);
-
-  varSubs.subscribeSet = (obj, name, callback) => skope.sandbox.subscribeSet(obj, name, callback, exec.context);
-
-  varSubsStore.set(exec.run, varSubs);
+  varSubsStore.set(exec.run, createVarSubs(skope, exec.context));
   return exec.run;
 }
 
@@ -4792,8 +5138,9 @@ function preprocessHTML(skope, parent, html) {
 }
 
 function processHTML(skope, elem, subs, delegate) {
+  var skipFirst = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : false;
   var exec = walkerInstance();
-  walkTree(skope, elem, subs, exec.ready, delegate);
+  walkTree(skope, elem, subs, exec.ready, delegate, skipFirst);
   return {
     elem: elem,
     run: exec.run
@@ -4834,14 +5181,68 @@ function createError(msg, el) {
   return err;
 }
 
-function walkTree(skope, element, parentSubs, ready, delegate) {
+function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
   var currentSubs = [];
   parentSubs.push(currentSubs);
+
+  var walkNested = () => {
+    var execSteps = [];
+
+    var r = cb => execSteps.push(cb);
+
+    var _loop = function _loop(el) {
+      if (el instanceof Element) {
+        walkTree(skope, el, currentSubs, r, delegate, false);
+      } else if (el.nodeType === 3) {
+        var strings = walkText(el.textContent);
+        var nodes = [];
+        var found = false;
+        strings.forEach(s => {
+          if (s.startsWith("{{") && s.endsWith("}}")) {
+            found = true;
+            var placeholder = document.createTextNode("");
+            ready(scopes => {
+              currentSubs.push(skope.watch(element, watchRun(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
+                placeholder.textContent = val + "";
+              }, err => {
+              }));
+              return scopes;
+            });
+            nodes.push(placeholder);
+          } else {
+            nodes.push(document.createTextNode(s));
+          }
+        });
+
+        if (found) {
+          nodes.forEach(n => {
+            el.before(n);
+          });
+          el.remove();
+        }
+      }
+    };
+
+    for (var el of [...element.childNodes]) {
+      _loop(el);
+    }
+
+    ready(scopes => {
+      for (var cb of execSteps) {
+        cb(scopes);
+      }
+    });
+  };
+
+  if (skipFirst) {
+    walkNested();
+    return;
+  }
 
   if (element instanceof Element) {
     var _ret = function () {
       skope.getStore(element, 'currentSubs', parentSubs);
-      var $element = skope.wrap(element);
+      var $element = skope.wrapElem(element);
       element.removeAttribute('s-cloak');
 
       if (element.hasAttribute('s-if')) {
@@ -4918,7 +5319,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
         }
 
         ready(scopes => {
-          var del = skope.wrap(_comment.parentElement).delegate();
+          var del = skope.wrapElem(_comment.parentElement).delegate();
           currentSubs.push(del.off);
           var nestedSubs = [];
           currentSubs.push(nestedSubs);
@@ -4975,6 +5376,13 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
         };
       }
 
+      if (element instanceof HTMLIFrameElement && element.hasAttribute('skope-iframe-content')) {
+        ready(() => {
+          skope.wrapElem(element).html(element.getAttribute('skope-iframe-content'));
+          element.removeAttribute('skope-iframe-content');
+        });
+      }
+
       if (element.hasAttribute('s-detached')) {
         var nestedScopes;
         ready(scopes => {
@@ -4987,7 +5395,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
 
       var elementScopeAdded = false;
 
-      var _loop = function _loop(att) {
+      var _loop2 = function _loop2(att) {
         if (att.nodeName.startsWith("$")) {
           var name = att.nodeName.substring(1).replace(/\-([\w\$])/g, (match, letter) => letter.toUpperCase());
 
@@ -5014,7 +5422,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
       };
 
       for (var att of element.attributes) {
-        var _ret2 = _loop(att);
+        var _ret2 = _loop2(att);
 
         if (_ret2 === "continue") continue;
       }
@@ -5023,7 +5431,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
         if (element.type === 'skopejs') {
           ready(scopes => {
             try {
-              skope.execAsync(getRootElement(scopes), element.innerHTML, scopes).run();
+              skope.exec(getRootElement(scopes), element.innerHTML, scopes).run();
             } catch (err) {
               createError(err === null || err === void 0 ? void 0 : err.message, element);
             }
@@ -5036,7 +5444,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
           v: void 0
         };
       } else {
-        var _loop2 = function _loop2(_att) {
+        var _loop3 = function _loop3(_att) {
           if (_att.nodeName.startsWith(':')) {
             var _at2 = _att.nodeName.slice(1);
 
@@ -5080,11 +5488,19 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
 
             var _parts = transitionParts[0].slice(1).split('.');
 
+            var debouce = /^debounce(\((\d+)\))?$/.exec(_parts[1] || "");
+            var throttle = /^throttle(\((\d+)\))?$/.exec(_parts[1] || "");
+
+            if (_parts[1] && !(debouce || throttle || _parts[1] === 'once')) {
+              createError('Invalid event directive: ' + _parts[1], _att);
+              return "continue";
+            }
+
             var transitionVar = (_transitionParts$ = transitionParts[1]) === null || _transitionParts$ === void 0 ? void 0 : _transitionParts$.replace(/\-([\w\$])/g, (match, letter) => letter.toUpperCase());
 
             if (transitionVar) {
               if (!regVarName.test(transitionVar)) {
-                createError("Invalid variable name in attribute ".concat(_att.nodeName), element);
+                createError("Invalid variable name in attribute", _att);
                 return "continue";
               }
             }
@@ -5092,7 +5508,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
             ready(scopes => {
               var trans;
 
-              var ev = e => {
+              var evCb = e => {
                 trans = skope.execAsync(getRootElement(scopes), _att.nodeValue, pushScope(skope, scopes, element, currentSubs, {
                   $event: e
                 })).run();
@@ -5104,6 +5520,34 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
                   })).run();
                 }
               };
+
+              var ev = evCb;
+
+              if (debouce) {
+                var _timer = null;
+
+                ev = e => {
+                  clearTimeout(_timer);
+                  _timer = setTimeout(() => {
+                    _timer = null;
+                    evCb(e);
+                  }, Number(debouce[2] || 250));
+                };
+              }
+
+              if (throttle) {
+                var _timer2 = null;
+                var eobj;
+
+                ev = e => {
+                  eobj = e;
+                  if (_timer2 !== null) return;
+                  _timer2 = setTimeout(() => {
+                    _timer2 = null;
+                    evCb(eobj);
+                  }, Number(throttle[2] || 250));
+                };
+              }
 
               if (transitionVar) {
                 skope.exec(getRootElement(scopes), "if (typeof ".concat(transitionVar, " === 'undefined') var ").concat(transitionVar), scopes).run();
@@ -5131,7 +5575,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
         };
 
         for (var _att of element.attributes) {
-          var _ret3 = _loop2(_att);
+          var _ret3 = _loop3(_att);
 
           if (_ret3 === "continue") continue;
         }
@@ -5142,53 +5586,7 @@ function walkTree(skope, element, parentSubs, ready, delegate) {
   }
 
   if (element instanceof Element && element.hasAttribute('s-static')) ; else {
-    var execSteps = [];
-
-    var r = cb => execSteps.push(cb);
-
-    var _loop3 = function _loop3(el) {
-
-      if (el instanceof Element) {
-        walkTree(skope, el, currentSubs, r, delegate);
-      } else if (el.nodeType === 3) {
-        var strings = walkText(el.textContent);
-        var nodes = [];
-        var found = false;
-        strings.forEach(s => {
-          if (s.startsWith("{{") && s.endsWith("}}")) {
-            found = true;
-            var placeholder = document.createTextNode("");
-            ready(scopes => {
-              currentSubs.push(skope.watch(element, watchRun(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
-                placeholder.textContent = val + "";
-              }, err => {
-              }));
-              return scopes;
-            });
-            nodes.push(placeholder);
-          } else {
-            nodes.push(document.createTextNode(s));
-          }
-        });
-
-        if (found) {
-          nodes.forEach(n => {
-            el.before(n);
-          });
-          el.remove();
-        }
-      }
-    };
-
-    for (var el of [...element.childNodes]) {
-      _loop3(el);
-    }
-
-    ready(scopes => {
-      for (var cb of execSteps) {
-        cb(scopes);
-      }
-    });
+    walkNested();
   }
 }
 
@@ -5224,12 +5622,28 @@ class Skope {
     }
   }
 
+  wrapElem(el) {
+    return this.wrap(el, el.ownerDocument);
+  }
+
   watch(elem, toWatch, handler, errorCb) {
     var _this = this;
 
     var watchGets = new Map();
     var subUnsubs = [];
     var varSubs = varSubsStore.get(toWatch);
+
+    if (!varSubs) {
+      var context = this.sandbox.getContext(toWatch);
+
+      if (!context) {
+        createError('Non-sandbox watch callback', elem);
+        return;
+      }
+
+      varSubs = createVarSubs(this, context);
+    }
+
     var lastVal;
     var update = false;
     var start = Date.now();
@@ -5238,6 +5652,8 @@ class Skope {
     var ignore = new WeakMap();
 
     var digest = () => {
+      var _varSubs;
+
       if (Date.now() - start > 4000) {
         count = 0;
         start = Date.now();
@@ -5249,7 +5665,7 @@ class Skope {
       }
 
       unsubNested(subUnsubs);
-      var g = varSubs === null || varSubs === void 0 ? void 0 : varSubs.subscribeGet((obj, name) => {
+      var g = (_varSubs = varSubs) === null || _varSubs === void 0 ? void 0 : _varSubs.subscribeGet((obj, name) => {
         if (obj === undefined) return;
         var list = watchGets.get(obj) || new Set();
         list.add(name);
@@ -5271,7 +5687,9 @@ class Skope {
         var obj = item[0];
 
         var _loop6 = function _loop6(name) {
-          subUnsubs.push(varSubs === null || varSubs === void 0 ? void 0 : varSubs.subscribeSet(obj, name, () => {
+          var _varSubs2;
+
+          subUnsubs.push((_varSubs2 = varSubs) === null || _varSubs2 === void 0 ? void 0 : _varSubs2.subscribeSet(obj, name, () => {
             var names = ignore.get(obj);
 
             if (!names) {
@@ -5296,7 +5714,7 @@ class Skope {
         var obj = _item[0];
 
         var _loop7 = function _loop7(name) {
-          subUnsubs.push(_this.sandbox.subscribeSetGlobal(obj, name, () => {
+          subUnsubs.push(_this.sandbox.subscribeSetGlobal(obj, name, mod => {
             var _ignore$get;
 
             if ((_ignore$get = ignore.get(obj)) !== null && _ignore$get !== void 0 && _ignore$get.has(name)) {
@@ -5381,7 +5799,7 @@ class Skope {
       var comp = component || el.getAttribute('skope');
       var scope = getScope(this, el, subs, this.components[comp] || {}, true);
       var processed = processHTML(this, el, subs, this.defaultDelegateObject);
-      el.setAttribute('s-processed', '');
+      this.sanitizer.setAttributeForced(el, 'skope-processed', '');
       processed.run([scope]);
     }, false);
     subs.push(sub.cancel);

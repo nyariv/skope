@@ -85,14 +85,14 @@ export interface IElementCollection {
     siblings(selector?: string): IElementCollection;
     children(selector?: string): IElementCollection;
 }
-export declare type selector = Element | IElementCollection | NodeList | HTMLCollection | string | Set<Element>;
+export declare type selector = Element | IElementCollection | Iterable<Element> | string;
 export declare type wrapType = selector | selector[];
+export declare function ownerDoc(coll: IElementCollection): HTMLDocument | undefined;
 export default function createClass(sanitizer: () => HTMLSanitizer): {
-    $document: IElementCollection;
     getStore: <T>(elem: Node, store: string, defaultValue?: T) => T;
     deleteStore: (elem: Element, store: string) => boolean;
     ElementCollection: new (item?: number | Element, ...items: Element[]) => IElementCollection;
-    wrap: (selector: wrapType, context?: IElementCollection) => IElementCollection;
+    wrap: (selector: wrapType, context: IElementCollection | Document) => IElementCollection;
     defaultDelegateObject: DelegateObject;
 };
 export {};
