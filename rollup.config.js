@@ -5,10 +5,10 @@ import typescript from '@rollup/plugin-typescript';
 import copy from "rollup-plugin-copy-assets";
 import commonjs from '@rollup/plugin-commonjs';
 
-const extensions = ['.js', '.ts']
+const extensions = ['.js', '.ts'];
 
-export default {
-  input: ['src/Skope.ts', 'src/defaultInit.ts', 'src/HTMLSanitizer.ts'],
+export default [{
+  input: ['src/Skope.ts'],
   preserveModules: false,
   output: {
     dir: 'dist',
@@ -29,4 +29,19 @@ export default {
     babel({ extensions, babelHelpers: 'bundled' }),
     filesize()
   ]
-}
+}, {
+  input: ['src/defaultInit.ts'],
+  output: {
+    dir: 'dist',
+    name: 'defaultInit',
+    format: 'iife',
+    sourcemap: true,
+  },
+  plugins: [
+    commonjs(),
+    typescript(),
+    resolve({ extensions }),
+    babel({ extensions, babelHelpers: 'bundled' }),
+    filesize()
+  ]
+}]
