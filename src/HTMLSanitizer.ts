@@ -73,7 +73,7 @@ let styleIds = 0;
 const reservedAtrributes: WeakMap<Element, Set<string>> = new WeakMap();
 
 export default class HTMLSanitizer {
-  types: Map<new () => Element, {attributes: Set<string>, element: (el: Element, preprocess: boolean) => boolean|void}> = new Map();
+  types: Map<new () => Element, {attributes: Set<string>, element: (el: Element, staticHtml: boolean) => boolean|void}> = new Map();
   srcAttributes = new Set(['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from']);
   allowedInputs = new Set([
     'button',
@@ -141,39 +141,53 @@ export default class HTMLSanitizer {
                   'list'], (el: Element) => {
       return true;
     });
-    sanitizeType(this, [HTMLScriptElement], ['type'], (el: HTMLScriptElement) => {
+    sanitizeType(this, [HTMLScriptElement], ['type'], (el: HTMLScriptElement, staticHtml) => {
       if (!el.type || el.type === 'text/javascript') {
         el.type = 'skopejs';
       }
-      return el.type === "skopejs";
+      return !staticHtml && el.type === "skopejs";
     });
 
+    sanitizeType(this, [HTMLIFrameElement], [], (el: HTMLIFrameElement) => {
+      this.setAttributeForced(el, 'skope-iframe-content', el.innerHTML);
+      el.innerHTML = '';
+      return !el.src && !el.srcdoc;
+    })
+
     const processedStyles: WeakSet<HTMLStyleElement> = new WeakSet();
-    sanitizeType(this, [HTMLStyleElement], [], (el: HTMLStyleElement) => {
-      const parent = el.parentElement;
-      if (!parent) return false;
-      if (processedStyles.has(el)) return true;
-      processedStyles.add(el);
-      if (!this.isAttributeForced(parent, 'skope-style')) {
-        parent.removeAttribute('skope-style');
-      }
-      const id = parent.getAttribute('skope-style') || ++styleIds;
-      this.setAttributeForced(parent, 'skope-style', id + "");
-      let i = el.sheet.cssRules.length - 1;
-      for (let rule of [...el.sheet.cssRules].reverse()) {
-        if (!(rule instanceof CSSStyleRule)) {
-          el.sheet.deleteRule(i);
+    sanitizeType(this, [HTMLStyleElement], [], (el: HTMLStyleElement, staticHtml) => {
+      if (staticHtml) return false;
+      const loaded = () => {
+        const parent = el.parentElement;
+        if (!parent) return false;
+        if (processedStyles.has(el)) return true;
+        processedStyles.add(el);
+        if (!this.isAttributeForced(parent, 'skope-style')) {
+          parent.removeAttribute('skope-style');
         }
-        i--;
-      }
-      i = 0;
-      for (let rule of [...el.sheet.cssRules]) {
-        if (rule instanceof CSSStyleRule) {
-          var cssText = rule.style.cssText;
-          el.sheet.deleteRule(i);
-          el.sheet.insertRule(`[skope-style="${id}"] :is(${rule.selectorText}) { ${cssText} }`, i);
+        const id = parent.getAttribute('skope-style') || ++styleIds;
+        this.setAttributeForced(parent, 'skope-style', id + "");
+        let i = el.sheet.cssRules.length - 1;
+        for (let rule of [...el.sheet.cssRules].reverse()) {
+          if (!(rule instanceof CSSStyleRule || rule instanceof CSSKeyframesRule)) {
+            el.sheet.deleteRule(i);
+          }
+          i--;
         }
-        i++;
+        i = 0;
+        for (let rule of [...el.sheet.cssRules]) {
+          if (rule instanceof CSSStyleRule) {
+            var cssText = rule.style.cssText;
+            el.sheet.deleteRule(i);
+            el.sheet.insertRule(`[skope-style="${id}"] :is(${rule.selectorText}) { ${cssText} }`, i);
+          }
+          i++;
+        }
+      }
+      if (el.sheet && el.parentElement) {
+        loaded();
+      } else {
+        el.addEventListener('load', loaded);
       }
       return true; 
     });
@@ -233,7 +247,7 @@ export default class HTMLSanitizer {
   sanitizeHTML(element: Element|DocumentFragment, staticHtml = false) {
     if (!(element instanceof DocumentFragment)) {
       const allowed = this.types.get(element.constructor as new () => Element);
-      if (!allowed || !allowed.element(element, staticHtml) || (staticHtml && (element instanceof HTMLStyleElement || element instanceof HTMLScriptElement))) {
+      if (!allowed || !allowed.element(element, staticHtml)) {
         element.remove();
         return;
       } else {

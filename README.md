@@ -84,6 +84,42 @@ Save event callback promise to variable
   <div :class="{red: true}">this is red</div>
 ```
 
+### Inline IFrames
+
+Iframes without a src or srcdoc are supported, and the body of the iframe is populated with the inner html, like a web component.
+
+IFrames are usuful for when you want to confine the dom and styles within an element.
+
+Styles from outside the iframe are copied into it, so that styles can be defined out side of it, and skope behaves as if everything is within the same document.
+
+```html
+  <style>
+    .iframe-container {
+      width: 200px;
+      height: 100px;
+    }
+    iframe {
+      padding: 12px;
+      border: 1px solid #aaa;
+      width: 100%;
+      height: 100%;
+      box-sizing: border-box;
+    }
+    .ok {
+      color: green;
+    }
+  </style>
+  <div $counter="0" class="iframe-container">
+    <iframe>
+      <iframe>
+        <iframe>
+          <button @click="++counter" class="ok">Counter: {{counter}}</button>
+        </iframe>
+      </iframe>
+    </iframe>
+  </div>
+```
+
 ### s-cloak
 
 This attribute is removed when the html is processed by skope. In the default stylesheet it is treated as `display: none`.
@@ -171,16 +207,16 @@ This attribute will add classes based on a promise set to a variable, for each o
       <span class="idle">Idle</span>
       <span class="active"><div class="loader"></div></span>
       <span class="done">Done</span>
-      <span class="error">Error</span>
+      <span class="error">Error: {{var1?.catch((e) => e.message)}}</span>
     </div>
 
     <button @click$var2="await $delay(2000); if(Math.random() < .5) throw new Error('random error')">Trigger custom transition</button>
     <div $running
-         class="s-transition"
-         :class.s-transition-idle="(running = var2?.then(() => running = false, () => running = false)) === undefined"
-         :class.s-transition-active="!!running"
-         :class.s-transition-done="!running && var2?.then(() => true, () => false)"
-         :class.s-transition-error="!running && var2?.then(() => false, () => true)"
+          class="s-transition"
+          :class.s-transition-idle="(running = var2?.then(() => running = false, () => running = false)) === undefined"
+          :class.s-transition-active="!!running"
+          :class.s-transition-done="!running && var2?.then(() => true, () => false)"
+          :class.s-transition-error="!running && var2?.then(() => false, () => true)"
     >
       <span class="idle">Idle</span>
       <span class="active"><div class="loader"></div></span>

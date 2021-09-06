@@ -2,7 +2,7 @@
 
 import Sandbox, { IExecContext } from '@nyariv/sandboxjs';
 import { Change } from '@nyariv/sandboxjs/dist/node/executor';
-import createClass, { EqEvent, wrapType, DelegateObject } from './eQuery'
+import createClass, { EqEvent, wrapType, DelegateObject, ownerDoc } from './eQuery'
 import { IElementCollection } from './eQuery';
 import HTMLSanitizer from './HTMLSanitizer';
 
@@ -151,7 +151,7 @@ function createErrorCb(el: Node) {
 
 function initialize (skope: Skope) {
   const eQuery = createClass(() => skope.sanitizer);
-  const { wrap, ElementCollection, getStore, deleteStore, $document, defaultDelegateObject} = eQuery;
+  const { wrap, ElementCollection, getStore, deleteStore, defaultDelegateObject} = eQuery;
   skope.defaultDelegateObject = defaultDelegateObject;
   skope.getStore = getStore;
   skope.deleteStore = deleteStore;
@@ -160,7 +160,7 @@ function initialize (skope: Skope) {
   class ElementScope implements IElementScope {
     $el: IElementCollection;
     constructor(element: Element) {
-      this.$el = wrap(element);
+      this.$el = wrap(element, element.ownerDocument);
     }
   
     $dispatch(eventType: string, detail?: any, bubbles = true, cancelable = true) {
@@ -183,26 +183,54 @@ function initialize (skope: Skope) {
       return wrap(element, this.$el);
     }
   }
-  
+
   ElementCollection.prototype.html = function (content?: string|Node|IElementCollection) {
     if (content === undefined) {
       return this.get(0)?.innerHTML;
     }
-    let contentElem: Node;
-    if (content instanceof ElementCollection) {
-      content = (content as any).detach();
-    }
     let elem = this.get(0);
     if (!elem) return this;
-    contentElem = preprocessHTML(skope, elem, content as any);
-    const currentSubs: subs = getStore<subs>(elem, 'currentSubs', []);
-    for (let el of [...elem.children]) {
-      unsubNested(getStore<subs>(el, 'currentSubs'));
+    let contentElem: Node;
+    if (content instanceof ElementCollection) {
+      content = (content as any).detach() as DocumentFragment;
     }
-    const processed = processHTML(skope, contentElem, currentSubs, defaultDelegateObject);
-    elem.innerHTML = '';
-    elem.appendChild(processed.elem);
-    processed.run(getScopes(skope, elem, currentSubs, {}));
+    let currentSubs: subs = getStore<subs>(elem, 'currentSubs', []);
+    let scopes = getScopes(skope, elem, currentSubs);
+    if (elem instanceof HTMLIFrameElement) {
+      const prev = elem;
+      unsubNested(getStore<subs>(elem.contentDocument.body, 'currentSubs'));
+      elem = document.createElement('body');
+      const prevSub = currentSubs;
+      currentSubs = getStore<subs>(elem, 'currentSubs', []);
+      prevSub.push(currentSubs);
+      getStore<subs>(elem, 'currentSubs', currentSubs);
+      getStore<IElementScope[]>(elem, 'scopes', scopes);
+      const sty = document.createElement('style');
+      sty.innerHTML = 'body { padding: 0; margin: 0; }';
+      prev.contentDocument.head.appendChild(sty);
+      prev.contentDocument.body.replaceWith(elem);
+      const recurse = (el: Element): string[] => {
+        if (!el || !el.parentElement || el.matches('[skope]')) return [];
+        const styles = recurse(el.parentElement);
+        styles.push(...skope.wrapElem(el.parentElement).children('style').map((el) => el.innerHTML));
+        return styles;
+      }
+      recurse(prev).forEach((css) => {
+        const st = document.createElement('style');
+        st.innerHTML = css;
+        prev.contentDocument.body.appendChild(st);
+      });
+    } else {
+      for (let el of [...elem.children]) {
+        unsubNested(getStore<subs>(el, 'currentSubs'));
+      }
+      elem.innerHTML = '';
+    }
+    contentElem = preprocessHTML(skope, elem, content);
+    scopes = getScopes(skope, elem, currentSubs, {});
+    elem.appendChild(contentElem);
+    const processed = processHTML(skope, elem, currentSubs, defaultDelegateObject, true);
+    processed.run(scopes);
     return this;
   };
   ElementCollection.prototype.text = function (set?: string) {
@@ -244,10 +272,10 @@ function initialize (skope: Skope) {
   skope.defineDirective('text', (exec: DirectiveExec, scopes: IElementScope[]) => {
     return skope.watch(exec.att, watchRun(skope, scopes, exec.js), (val, lastVal) => {
       //@ts-ignore
-      skope.wrap(exec.element).text(val + "");
+      skope.wrapElem(exec.element).text(val + "");
     }, () => {
       //@ts-ignore
-      skope.wrap(exec.element).text("");
+      skope.wrapElem(exec.element).text("");
     });
   });
   
@@ -265,7 +293,7 @@ function initialize (skope: Skope) {
   skope.defineDirective('model', (exec: DirectiveExec, scopes: IElementScope[]) => {
     const el: any = exec.element;
     const isContentEditable = (el instanceof HTMLElement && (el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === ''));
-    const $el: any = skope.wrap(el);
+    const $el: any = skope.wrapElem(el);
     let last: any = !isContentEditable ? $el.val() : $el.html();
     if (!el.hasAttribute('name')) {
       el.setAttribute('name', exec.js.trim());
@@ -283,7 +311,7 @@ function initialize (skope: Skope) {
     const sub: subs = [];
     sub.push(exec.delegate.on(el, 'input', change));
     if (el.form) {
-      const $form = skope.wrap(el.form);
+      const $form = skope.wrap(el.form, el.ownerDocument);
       sub.push($form.delegate().on($form.get(0), 'reset', () => reset = !!setTimeout(change)));
     }
     sub.push(skope.watch(exec.att, watchRun(skope, scopes, exec.js.trim()), (val, lastVal) => {
@@ -305,16 +333,16 @@ function initialize (skope: Skope) {
     return skope.watch(exec.att, watchRun(skope, scopes, exec.js), (val, lastVal) => {
       if (val instanceof Node || typeof val === 'string' || val instanceof this.ElementCollection) {
         //@ts-ignore
-        skope.wrap(exec.element).html(val);
+        skope.wrapElem(exec.element).html(val);
       }
     }, () => {
       //@ts-ignore
-      skope.wrap(exec.element).html("");
+      skope.wrapElem(exec.element).html("");
     });
   });
 
   skope.defineDirective('transition', (exec: DirectiveExec, scopes: IElementScope[]) => {
-    const $el = skope.wrap(exec.element);
+    const $el = skope.wrapElem(exec.element);
     $el.addClass('s-transition');
     $el.addClass('s-transition-idle');
     let lastPromise: Promise<unknown>;
@@ -361,7 +389,7 @@ function getScope(skope: Skope, element: Element, subs: subs, vars: {[variable: 
 function getScopes(skope: Skope, element: Element, subs: subs = [], newScope?: {[variable: string]: any}): IElementScope[] {
   if (!element) return [];
   const scope = newScope === undefined ? skope.getStore<IElementScope>(element, 'scope') : getScope(skope, element, subs, newScope);
-  const scopes: IElementScope[] = [];
+  const scopes: IElementScope[] = skope.getStore<IElementScope[]>(element, 'scopes') || [];
   if (scope) scopes.push(scope);
   return [...(element.hasAttribute('s-detached') ? [] : getScopes(skope, element.parentElement)), ...scopes];
 }
@@ -414,9 +442,9 @@ function preprocessHTML(skope: Skope, parent: Element, html: Node|string): Node 
   return elem;
 }
 
-function processHTML(skope: Skope, elem: Node, subs: subs, delegate: DelegateObject) {
+function processHTML(skope: Skope, elem: Node, subs: subs, delegate: DelegateObject, skipFirst = false) {
   const exec = walkerInstance();
-  walkTree(skope, elem, subs, exec.ready, delegate);
+  walkTree(skope, elem, subs, exec.ready, delegate, skipFirst);
   return {
     elem: elem,
     run: exec.run
@@ -455,12 +483,57 @@ function createError(msg: string, el: Node) {
   return err;
 }
 
-function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject) {
+function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject, skipFirst: boolean) {
   let currentSubs: subs = [];
   parentSubs.push(currentSubs);
+  const walkNested = () => {
+    const execSteps: ((scopes: IElementScope[]) => void)[] = [];
+    const r = (cb: (scopes: IElementScope[]) => void) => execSteps.push(cb);
+    for (let el of [...element.childNodes]) {
+      if (el instanceof Element) {
+        walkTree(skope, el, currentSubs, r, delegate, false);
+      } else if (el.nodeType === 3) {
+        const strings = walkText(el.textContent);
+        const nodes: Text[] = [];
+        let found = false;
+        strings.forEach((s) => {
+          if (s.startsWith("{{") && s.endsWith("}}")) {
+            found = true;
+            const placeholder = document.createTextNode("");
+            ready((scopes) => {
+              currentSubs.push(skope.watch(element, watchRun(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
+                placeholder.textContent = val + "";
+              }, (err: Error) => {() => {
+                placeholder.textContent = "";
+              }
+              }));
+              return scopes;
+            });
+            nodes.push(placeholder);
+          } else {
+            nodes.push(document.createTextNode(s));
+          }
+        });
+  
+        if (found) {
+          nodes.forEach((n) => {
+            el.before(n);
+          });
+          el.remove();
+        }
+      }
+    }
+    ready((scopes) => {
+      for (let cb of execSteps) cb(scopes);
+    });
+  }
+  if (skipFirst) {
+    walkNested();
+    return;
+  }
   if (element instanceof Element) {
     skope.getStore(element, 'currentSubs', parentSubs);
-    const $element = skope.wrap(element);
+    const $element = skope.wrapElem(element);
     element.removeAttribute('s-cloak');
     if (element.hasAttribute('s-if')) {
       const comment = document.createComment('s-if');
@@ -526,7 +599,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
         value = doubleMatch[2];
       }
       ready((scopes) => {
-        const del = skope.wrap(comment.parentElement).delegate();
+        const del = skope.wrapElem(comment.parentElement).delegate();
         currentSubs.push(del.off);
         const nestedSubs: subs = [];
         currentSubs.push(nestedSubs);
@@ -571,6 +644,13 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
         }));
       });
       return;
+    }
+    if (element instanceof HTMLIFrameElement && element.hasAttribute('skope-iframe-content')) {
+      ready(() => {
+        //@ts-ignore
+        skope.wrapElem(element).html(element.getAttribute('skope-iframe-content'));
+        element.removeAttribute('skope-iframe-content');
+      });
     }
     if (element.hasAttribute('s-detached')) {
       let nestedScopes: IElementScope[];
@@ -658,6 +738,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
           const throttle = /^throttle(\((\d+)\))?$/.exec(parts[1] || "");
           if (parts[1] && !(debouce || throttle || parts[1] === 'once')) {
             createError('Invalid event directive: ' + parts[1], att);
+            continue;
           }
           const transitionVar = transitionParts[1]?.replace(/\-([\w\$])/g, (match, letter) => letter.toUpperCase());;
           if (transitionVar) {
@@ -682,8 +763,8 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
                 clearTimeout(timer);
                 timer = setTimeout(() => {
                   timer = null;
-                  evCb(e), Number(debouce[2] || 250);
-                });
+                  evCb(e);
+                }, Number(debouce[2] || 250));
               }
             }
             if (throttle) {
@@ -725,46 +806,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
   }
   if (element instanceof Element && element.hasAttribute('s-static')) {
   } else {
-    const execSteps: ((scopes: IElementScope[]) => void)[] = [];
-    const r = (cb: (scopes: IElementScope[]) => void) => execSteps.push(cb);
-    for (let el of [...element.childNodes]) {
-      const execSteps: ((scopes: IElementScope[]) => void)[] = [];
-      if (el instanceof Element) {
-        walkTree(skope, el, currentSubs, r, delegate);
-      } else if (el.nodeType === 3) {
-        const strings = walkText(el.textContent);
-        const nodes: Text[] = [];
-        let found = false;
-        strings.forEach((s) => {
-          if (s.startsWith("{{") && s.endsWith("}}")) {
-            found = true;
-            const placeholder = document.createTextNode("");
-            ready((scopes) => {
-              currentSubs.push(skope.watch(element, watchRun(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
-                placeholder.textContent = val + "";
-              }, (err: Error) => {() => {
-                placeholder.textContent = "";
-              }
-              }));
-              return scopes;
-            });
-            nodes.push(placeholder);
-          } else {
-            nodes.push(document.createTextNode(s));
-          }
-        });
-  
-        if (found) {
-          nodes.forEach((n) => {
-            el.before(n);
-          });
-          el.remove();
-        }
-      }
-    }
-    ready((scopes) => {
-      for (let cb of execSteps) cb(scopes);
-    });
+    walkNested();
   }
 }
 
@@ -784,7 +826,7 @@ export default class Skope {
     run: () => Promise<unknown>;
   }}> = new WeakMap();
   ElementCollection: new (item?: number|Element, ...items: Element[]) => IElementCollection;
-  wrap: (selector: wrapType, context?: IElementCollection) => IElementCollection;
+  wrap: (selector: wrapType, context: IElementCollection|Document) => IElementCollection;
   defaultDelegateObject: DelegateObject;
   getStore: <T>(elem: Node, store: string, defaultValue?: T) => T;
   deleteStore: (elem: Element, store: string) => boolean;
@@ -812,6 +854,10 @@ export default class Skope {
     if (prot !== Object.getPrototypeOf({}) && !this.sandbox.context.prototypeWhitelist.has(prot)) {
       this.sandbox.context.prototypeWhitelist.set(prot, new Set());
     }
+  }
+
+  wrapElem(el: Element) {
+    return this.wrap(el, el.ownerDocument);
   }
   
   watch<T>(elem: Node, toWatch: () => T, handler: (val: T, lastVal: T|undefined) => void|Promise<void>, errorCb?: (err: Error) => void): subs {

@@ -25,6 +25,32 @@
   </style>
   <div :class="{red: true}">this is red</div>
   
+  <style>
+    .iframe-container {
+      width: 200px;
+      height: 100px;
+    }
+    iframe {
+      padding: 12px;
+      border: 1px solid #aaa;
+      width: 100%;
+      height: 100%;
+      box-sizing: border-box;
+    }
+    .ok {
+      color: green;
+    }
+  </style>
+  <div $counter="0" class="iframe-container">
+    <iframe>
+      <iframe>
+        <iframe>
+          <button @click="++counter" class="ok">Counter: {{counter}}</button>
+        </iframe>
+      </iframe>
+    </iframe>
+  </div>
+  
   <div> <span s-for="i in [1,2,3]"> {{i}} </span> </div>
 
   <div $var1="false">
@@ -86,11 +112,11 @@
 
     <button @click$var2="await $delay(2000); if(Math.random() < .5) throw new Error('random error')">Trigger custom transition</button>
     <div $running
-         class="s-transition"
-         :class.s-transition-idle="(running = var2?.then(() => running = false, () => running = false)) === undefined"
-         :class.s-transition-active="!!running"
-         :class.s-transition-done="!running && var2?.then(() => true, () => false)"
-         :class.s-transition-error="!running && var2?.then(() => false, () => true)"
+          class="s-transition"
+          :class.s-transition-idle="(running = var2?.then(() => running = false, () => running = false)) === undefined"
+          :class.s-transition-active="!!running"
+          :class.s-transition-done="!running && var2?.then(() => true, () => false)"
+          :class.s-transition-error="!running && var2?.then(() => false, () => true)"
     >
       <span class="idle">Idle</span>
       <span class="active"><div class="loader"></div></span>

@@ -108,15 +108,18 @@ export interface IElementCollection {
   children(selector?: string): IElementCollection;
 }
 
-export type selector = Element|IElementCollection|NodeList|HTMLCollection|string|Set<Element>
+export type selector = Element|IElementCollection|Iterable<Element>|string
 export type wrapType = selector|selector[];
 
+export function ownerDoc(coll: IElementCollection): HTMLDocument|undefined {
+  return coll.get(0)?.ownerDocument;
+}
+
 export default function createClass(sanitizer: () => HTMLSanitizer): {
-  $document: IElementCollection,
   getStore: <T>(elem: Node, store: string, defaultValue?: T) => T,
   deleteStore: (elem: Element, store: string) => boolean,
   ElementCollection: new (item?: number|Element, ...items: Element[]) => IElementCollection,
-  wrap: (selector: wrapType, context?: IElementCollection) => IElementCollection,
+  wrap: (selector: wrapType, context: IElementCollection|Document) => IElementCollection,
   defaultDelegateObject: DelegateObject
 } {
 
@@ -127,12 +130,12 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
 
   const defaultDelegateObject: DelegateObject = {
     on<T extends Event>(elem: Element, event: string, callback: (e: T&EqEvent) => void) {
-      const $el = wrap(elem);
+      const $el = wrap(elem, elem.ownerDocument);
       $el.on(event, callback);
       return () => $el.off(event, callback);
     },
     one<T extends Event>(elem: Element, event: string, callback: (e: T&EqEvent) => void) {
-      const $el = wrap(elem);
+      const $el = wrap(elem, elem.ownerDocument);
       $el.one(event, callback);
       return () => $el.off(event, callback);
     },
@@ -237,7 +240,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
         return this.some((elem) => elem.matches(selector as string));
       }
   
-      let sel = (selector instanceof ElementCollection ? selector : wrap(selector)).toSet();
+      let sel = (selector instanceof ElementCollection ? selector : wrap(selector, this)).toSet();
       return this.some((elem) => sel.has(elem));
     }
     
@@ -248,7 +251,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
       if (typeof selector === 'string') {
         return filter(this, (elem, i) => !elem.matches(selector as any));
       }
-      let sel = (selector instanceof ElementCollection ? selector : wrap(selector)).toSet();
+      let sel = (selector instanceof ElementCollection ? selector : wrap(selector, this)).toSet();
       return filter(this, (elem, i) => !sel.has(elem));
     }
   
@@ -266,7 +269,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
           return found.length;
         });
       }
-      const sel = selector instanceof ElementCollection ? selector : wrap(selector);
+      const sel = selector instanceof ElementCollection ? selector : wrap(selector, this);
       return filter(this, (elem, i) => sel.some((test) => elem !== test && elem.contains(test)));
     }
     
@@ -359,7 +362,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
       const opt = typeof callback === 'function' ? options : callback;
       objectOrProp<EqEventListener<T>>(events, cb, (ev, handler) => {
         this.forEach((elem) => {
-          const $el = wrap(elem);
+          const $el = wrap(elem, elem.ownerDocument);
           const evcb = (evt: T&EqEvent) => {
             $el.off(ev, evcb);
             handler(evt);
@@ -597,7 +600,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
     }
   
     vals(set?: {[name: string]: boolean|string|number|string[]}): {[name: string]: boolean|string|number|string[]|FileList} {
-      const $elems = wrap([this.filter('input[name], select[name], textarea[name]'), this.find('input[name], select[name], textarea[name]')]);
+      const $elems = wrap([this.filter('input[name], select[name], textarea[name]'), this.find('input[name], select[name], textarea[name]')], this);
       let res: {[name: string]: boolean|string|number|string[]|FileList} = {}
       if (set === undefined) {
         $elems.forEach((elem: HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement) => {
@@ -608,7 +611,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
               res[elem.name] = elem.value;
             }
           } else {
-            res[elem.name] = wrap(elem).val();
+            res[elem.name] = wrap(elem, elem.ownerDocument).val();
           }
         });
       } else {
@@ -618,7 +621,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
           if (elem instanceof HTMLInputElement && elem.type === 'radio') {
             elem.checked = set[elem.name] === elem.value;
           } else {
-            wrap(elem).val(set[elem.name]);
+            wrap(elem, elem.ownerDocument).val(set[elem.name]);
           }
         });
       }
@@ -657,9 +660,10 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
       if (!this.get(0)) return null;
   
       let get = (test: any) => test && test.length && test;
+      const owner = this;
       return  get(this.attr('aria-label')) || 
-              get(get(this.attr('aria-labelledby')) && wrap('#' + this.attr('aria-labelledby')).label()) || 
-              get(get(this.attr('id')) && wrap('label[for="'+ this.attr('id') + '"]').label()) ||
+              get(get(this.attr('aria-labelledby')) && wrap('#' + this.attr('aria-labelledby'), owner).label()) || 
+              get(get(this.attr('id')) && wrap('label[for="'+ this.attr('id') + '"]', owner).label()) ||
               get(this.attr('title')) || 
               get(this.attr('placeholder')) ||
               get(this.attr('alt')) || 
@@ -771,7 +775,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
         return ind >= this.length ? -1 : ind;
       }
   
-      const sel = (selector instanceof ElementCollection ? selector : wrap(selector)).toSet();
+      const sel = (selector instanceof ElementCollection ? selector : wrap(selector, this)).toSet();
       this.forEach((elem) => !(sel.has(elem) || (ind++ && false)));
   
       return ind >= this.length ? -1 : ind;
@@ -856,7 +860,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
       return wrap([
         propElem(this, 'nextElementSibling', selector, true),
         propElem(this, 'previousElementSibling', selector, true, false, false, true)
-      ]);
+      ], this);
     }
     
     /**
@@ -865,10 +869,16 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
     children(selector?: string) {
       return from(propElem(this.map((elem) => elem.firstElementChild), 'nextElementSibling', selector, true, true));
     }
+
+    iframeInner() {
+      let elem = this.get(0);
+      if (!(elem instanceof HTMLIFrameElement)) {
+        return new ElementCollection();
+      }
+      return new ElementCollection(elem.contentDocument.body);
+    }
   
   }
-  
-  const $document = wrap(document.documentElement);
   
   function wrapEvent<T extends Event>(originalEvent: (T|(T & EqEvent))): T & EqEvent {
     if ((<(T & EqEvent)>originalEvent).isEqEvent) {
@@ -929,50 +939,25 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
    * @param {*} [context] 
    * @returns {ElementCollection}
    */
-  function wrap(selector: wrapType, context?: IElementCollection): IElementCollection {
+  function wrap(selector: wrapType, context: IElementCollection|HTMLDocument): IElementCollection {
     if (!selector) return new ElementCollection();
     if (!context && (selector instanceof NodeList || selector instanceof HTMLCollection)) {
       return from(selector);
     }
-    if (!context && typeof selector === 'string') return from(document.querySelectorAll(selector));
-    if (!context && selector instanceof Element) return new ElementCollection(selector);
-    if (!context && selector instanceof ElementCollection) return filter(selector).unique().sort();
+    if (!context) return new ElementCollection();
+    let doc = (context instanceof ElementCollection ? ownerDoc(context) : context as HTMLDocument);
     
     let selectors = selector instanceof Array ? selector : [selector];
-    let $context = context ? (context instanceof ElementCollection ? context : wrap(context)) : $document;
+    let $context = context instanceof ElementCollection ? context : new ElementCollection(doc.documentElement);
     let elems = new Set<Element>();
-    let doFilter = !!context;
+    let doFilter = true;
     let doSort = selectors.length > 1;
     if ((selectors.length === 1 && $context.length === 1 && selectors[0] === arr($context)[0]) || $context === selector) return $context;
   
     for (let sel of selectors) {
-      if (sel instanceof ElementCollection) {
-        sel.forEach((elem) => {
-          if (elem instanceof Element) elems.add(elem);
-        });
-      } else if (sel instanceof Element) {
-        if (!context && selectors.length === 1) {
-          return new ElementCollection(sel);
-        }
+      if (sel instanceof Element) {
         elems.add(sel);
-      }  else if (sel instanceof NodeList) {
-        for(let i = 0; i < sel.length; i++) {
-          let elem = sel[i];
-          if (elem instanceof Element) {
-            elems.add(elem);
-          }
-        }
-      } else if (sel instanceof HTMLCollection) {
-        if (!context && selectors.length === 1) {
-          return from(sel);
-        }
-        from(sel).forEach((elem) => {
-          elems.add(elem);
-        });
       } else if (typeof sel === 'string') {
-        if (!context && selectors.length === 1) {
-          return from(document.querySelectorAll(sel));
-        }
         $context.forEach((cElem) => {
           cElem.querySelectorAll(':scope ' + sel).forEach((elem) => elems.add(elem));
         });
@@ -980,18 +965,12 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
           doFilter = false;
           doSort = false;
         }
-      } else if (sel instanceof Set) {
-        sel.forEach((elem) => {
-          if(elem instanceof Element) {
-            elems.add(elem);
-          }
-        });
       } else {
-        from(sel).forEach((elem) => {
+        for (let elem of sel) {
           if(elem instanceof Element) {
             elems.add(elem);
           }
-        })
+        }
       }
     }
   
@@ -1023,7 +1002,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
       if (typeof selector === 'string') {
         return filter(elems, (elem) => elem.matches(selector));
       }
-      const sel = (selector instanceof ElementCollection ? selector : wrap(selector)).toSet();
+      const sel = (selector instanceof ElementCollection ? selector : wrap(selector, this)).toSet();
       return filter(elems, (elem) => sel.has(elem));
     }
   
@@ -1168,7 +1147,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
   return {
     wrap,
     ElementCollection,
-    getStore, deleteStore, $document, defaultDelegateObject
+    getStore, deleteStore, defaultDelegateObject
   }
   
 }
