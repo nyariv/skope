@@ -13,8 +13,16 @@ function isObject (object: any): object is {[key: string]: unknown} {
   return object !== null && typeof object === 'object';
 }
 
-function getRootElement(scopes: IElementScope[]): Element {
-  return scopes[0]?.$el.get(0);
+function getRootScope(skope: Skope, scopes: IElementScope[]): IRootScope|undefined {
+  for (let i = scopes.length - 1; i >= 0; i--) {
+    if (scopes[i] instanceof skope.RootScope) {
+      return scopes[i] as IRootScope;
+    }
+  }
+}
+
+function getRootElement(skope: Skope, scopes: IElementScope[]): Element {
+  return getRootScope(skope, scopes)?.$el.get(0);
 }
 
 export class Component {}
@@ -108,6 +116,7 @@ interface IElementScope {
   $delay(ms: number): Promise<void>;
 }
 interface IRootScope extends IElementScope {
+  $templates: {[name: string]: HTMLTemplateElement};
   $refs: {[name: string]: IElementCollection};
   $wrap(element: wrapType): IElementCollection;
 }
@@ -125,18 +134,10 @@ export interface DirectiveExec {
 export type sub = (() => void)|sub[];
 export type subs = sub[];
 
-function walkerInstance() {
-  const execSteps: ((scopes: IElementScope[]) => void)[] = [];
-  return {
-    ready: (cb: (scopes: IElementScope[]) => void) => execSteps.push(cb),
-    run: function runNested(scopes: IElementScope[]) {
-      execSteps.forEach((cb) => cb(scopes))
-    }
-  }
-}
 function runDirective(skope: Skope, exec: DirectiveExec, scopes: IElementScope[]) {
-  if (skope.directives[exec.directive]) {
-    return skope.directives[exec.directive](exec, scopes);
+  const dir = skope.directives[exec.directive];
+  if (dir) {
+    return dir(exec, scopes);
   }
   return [];
 }
@@ -174,23 +175,27 @@ function initialize (skope: Skope) {
   }
 
   class RootScope extends ElementScope {
+    $templates: {[name: string]: HTMLTemplateElement} = {};
     $refs: {[name: string]: IElementCollection} = {};
+    constructor(el: Element) {
+      super(el);
+    }
     $wrap(element: wrapType) {
       return wrap(element, this.$el);
     }
   }
 
-  ElementCollection.prototype.html = function (content?: string|Node|IElementCollection) {
+  ElementCollection.prototype.html = function (content?: string|Element|DocumentFragment|IElementCollection) {
     if (content === undefined) {
       return this.get(0)?.innerHTML;
     }
-    if (!(content instanceof Node || typeof content == 'string' || content instanceof ElementCollection)) {
+    if (content === null || !(content instanceof DocumentFragment || content instanceof Element || typeof content == 'string' || content instanceof ElementCollection)) {
       return this;
     }
     let elem = this.get(0);
     if (!elem) return this;
-    let contentElem: Node;
-    let html: Node|string;
+    let contentElem: Element|DocumentFragment;
+    let html: Element|DocumentFragment|string;
     if (content instanceof ElementCollection) {
       html = (content as any).detach() as DocumentFragment;
     } else {
@@ -228,8 +233,14 @@ function initialize (skope: Skope) {
       }
       elem.innerHTML = '';
     }
-    contentElem = preprocessHTML(skope, elem, html);
-    scopes = getScopes(skope, elem, currentSubs, {});
+    if (elem instanceof HTMLTemplateElement) {
+      scopes = getScopes(skope, elem, currentSubs, {});
+      contentElem = elem.content;
+    } else {
+      scopes = getScopes(skope, elem, currentSubs, {});
+      contentElem = preprocessHTML(skope, elem, html);
+      registerTemplates(skope, contentElem, scopes);
+    }
     elem.appendChild(contentElem);
     const processed = processHTML(skope, elem, currentSubs, defaultDelegateObject, true);
     processed.run(scopes);
@@ -292,6 +303,53 @@ function initialize (skope: Skope) {
       skope.exec(document, `$refs[name] = $refs[name].not($el)`, [...scopes, name]).run();
     }];
   });
+
+  const div = document.createElement('div');
+  div.innerHTML = '<span $$templates="$templates"><span>';
+  const $$templatesAttr = div.querySelector('span').attributes.item(0);
+
+  skope.defineDirective('component', (exec: DirectiveExec, scopes: IElementScope[]) => {
+    const template = getRootScope(skope, scopes)?.$templates[exec.att.nodeValue];
+    if (!template) {
+      createError('Template not found', exec.att)
+      return [];
+    }
+
+    const elem = exec.element;
+
+    for (let attribute of template.attributes) {
+      const name = attribute.nodeName.toLowerCase();
+      if (name === 'id') continue;
+      if (elem.hasAttribute(name)) continue;
+      elem.setAttributeNode(attribute.cloneNode(true) as Attr);
+    }
+    elem.setAttributeNode($$templatesAttr.cloneNode(true) as Attr);
+    const slotContent = document.createDocumentFragment();
+    slotContent.append(...elem.childNodes);
+    elem.appendChild(template.content.cloneNode(true));
+    const slot = elem.querySelector('[slot]');
+    const detached = elem.hasAttribute('s-detached');
+
+    const subs: subs = [];
+    const delegate = skope.wrapElem(elem).delegate();
+    elem.removeAttribute('s-component');
+    elem.setAttribute('s-detached', '');
+    const run = processHTML(skope, elem, subs, delegate);
+    elem.removeAttribute('s-detached');
+    elem.setAttribute('s-component', exec.att.nodeValue);
+    elem.setAttribute('component-processed', '');
+    run.run(pushScope(skope, scopes, elem, subs));
+
+    if (slot) {
+      slot.appendChild(slotContent);
+      if (detached) {
+        slot.setAttribute('s-detached', '');
+      }
+      const run2 = processHTML(skope, slot, subs, exec.delegate);
+      run2.run(scopes);
+    }
+    return subs;
+  });
   
   skope.defineDirective('model', (exec: DirectiveExec, scopes: IElementScope[]) => {
     const el: any = exec.element;
@@ -305,7 +363,7 @@ function initialize (skope: Skope) {
     const change = () => {
       last = !isContentEditable ? $el.val() : $el.html();
       try {
-        skope.exec(getRootElement(scopes), exec.js.trim() + ' = ($$value === undefined && !reset) ? ' + exec.js.trim() + ' : $$value', pushScope(skope, scopes, el, exec.subs, {$$value: last, reset})).run();
+        skope.exec(getRootElement(skope, scopes), exec.js.trim() + ' = ($$value === undefined && !reset) ? ' + exec.js.trim() + ' : $$value', pushScope(skope, scopes, el, exec.subs, {$$value: last, reset})).run();
         reset = false;
       } catch (err) {
         createError(err?.message, exec.element);
@@ -374,15 +432,24 @@ function initialize (skope: Skope) {
   });
 }
 
-function getScope(skope: Skope, element: Element, subs: subs, vars: {[variable: string]: any} = {}, root = false) {
+function getScope(skope: Skope, element: Element, subs: subs, vars: {[variable: string]: any} = {}, root?: boolean): IElementScope|IRootScope {
   let scope = skope.getStore<IElementScope>(element, 'scope');
+  if (root) {
+    scope = skope.getStore<IElementScope>(element, 'rootScope');
+  }
   if (!scope) {
     skope.getStore<subs>(element, 'currentSubs', subs);
-    scope = skope.getStore<IElementScope>(element, 'scope', root ? new skope.RootScope(element) : new skope.ElementScope(element));
+    if (root) {
+      scope = skope.getStore<IElementScope>(element, 'rootScope', new skope.RootScope(element));
+      skope.getStore<IElementScope>(element, 'scope', scope);
+    } else {
+      scope = skope.getStore<IElementScope>(element, 'scope', new skope.ElementScope(element));
+    }
     subs.push(() => {
       scope.$el = null;
       skope.deleteStore(element, 'currentSubs');
       skope.deleteStore(element, 'scope');
+      skope.deleteStore(element, 'rootScope');
     });
   }
   Object.assign(scope, vars);
@@ -416,21 +483,19 @@ function createVarSubs(skope: Skope, context: IExecContext) {
 }
 
 function watchRun(skope: Skope, scopes: IElementScope[], code: string): () => unknown {
-  const exec = skope.exec(getRootElement(scopes), 'return ' + code, scopes);
+  const exec = skope.exec(getRootElement(skope, scopes), 'return ' + code, scopes);
   varSubsStore.set(exec.run, createVarSubs(skope, exec.context));
   return exec.run;
 }
 
-function preprocessHTML(skope: Skope, parent: Element, html: Node|string): Node {
+function preprocessHTML(skope: Skope, parent: Element, html: DocumentFragment|Element|string): DocumentFragment|Element {
   let elem: DocumentFragment|Element;
   if (typeof html === 'string') {
     const template = document.createElement('template');
     template.innerHTML = html;
     elem = template.content;
-  } else if (html instanceof Element) {
-    elem = html;
   } else {
-    return html;
+    elem = html;
   }
   if (parent.matches('[s-static], [s-static] *')) {
     skope.sanitizer.sanitizeHTML(elem, true);
@@ -443,6 +508,36 @@ function preprocessHTML(skope: Skope, parent: Element, html: Node|string): Node 
     skope.sanitizer.sanitizeHTML(elem);
   }
   return elem;
+}
+
+function registerTemplates(skope: Skope, elem: DocumentFragment|Element, scopes: IElementScope[]) {
+  const root = getRootScope(skope, scopes);
+  if (!root) return;
+  const recurse = (elem: Element|DocumentFragment) => {
+    elem.querySelectorAll('template[id]:not([s-static] template, [s-detached] template)').forEach((template: HTMLTemplateElement) => {
+      if (template.id) {
+        if (root.$templates[template.id]) {
+          createError('Duplicate template definition', template);
+        } else {
+          root.$templates[template.id] = template;
+        }
+      } else {
+        recurse(template.content);
+      }
+    });
+  }
+  recurse(elem);
+}
+
+function walkerInstance() {
+  const execSteps: ((scopes: IElementScope[]) => void)[] = [];
+  return {
+    ready: (cb: (scopes: IElementScope[]) => void) => execSteps.push(cb),
+    run: function runNested(scopes: IElementScope[]) {
+      execSteps.forEach((cb) => cb(scopes));
+      execSteps.length = 0;
+    }
+  }
 }
 
 function processHTML(skope: Skope, elem: Node, subs: subs, delegate: DelegateObject, skipFirst = false) {
@@ -472,11 +567,9 @@ function unsubNested(subs: sub) {
 }
 
 function pushScope(skope: Skope, scopes: IElementScope[], elem: Element, sub: subs, vars?: any) {
-  const found = skope.getStore<IElementScope>(elem, 'scope');
   const scope = getScope(skope, elem, sub, vars);
-  scopes = scopes.slice();
-  scopes.push(scope);
-  return scopes;
+  if (scope === scopes[scopes.length - 1]) return [...scopes];
+  return [...scopes, scope];
 }
 
 function createError(msg: string, el: Node) {
@@ -535,6 +628,9 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
     return;
   }
   if (element instanceof Element) {
+    if (element instanceof HTMLTemplateElement) {
+      return;
+    }
     skope.getStore(element, 'currentSubs', parentSubs);
     element.removeAttribute('s-cloak');
     if (element.hasAttribute('s-if')) {
@@ -661,13 +757,23 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
         }
       });
     }
-    if (element.hasAttribute('s-detached')) {
-      let nestedScopes: IElementScope[];
+    if (element.hasAttribute('s-component')) {
       ready((scopes) => {
-        nestedScopes = [getScope(skope, element, currentSubs, {}, true)];
+        try {
+          currentSubs.push(runDirective(skope, {
+            element,
+            att: element.getAttributeNode('s-component'),
+            directive: 'component',
+            js: '',
+            original: element.outerHTML,
+            subs: currentSubs,
+            delegate
+          }, scopes));
+        } catch (err) {
+          createError(err.message,  element);
+        }
       });
-      const prevReady = ready;
-      ready = (cb: (scopes: IElementScope[]) => void) => prevReady(() => cb(nestedScopes));
+      return;
     }
     let elementScopeAdded = false;
     for (let att of element.attributes) {
@@ -687,7 +793,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
           };
         }
         ready(scopes => {
-          skope.execAsync(getRootElement(scopes), `let ${name} = ${att.nodeValue}`, scopes).run().catch(createErrorCb(att));
+          skope.execAsync(getRootElement(skope, scopes), `let ${name} = ${att.nodeValue}`, scopes).run().catch(createErrorCb(att));
         });
       }
     }
@@ -695,7 +801,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
       if (element.type === 'skopejs') {
         ready((scopes) => {
           try {
-            skope.exec(getRootElement(scopes), element.innerHTML, scopes).run();
+            skope.exec(getRootElement(skope, scopes), element.innerHTML, scopes).run();
           } catch (err) {
             createError(err?.message, element);
           }
@@ -1033,6 +1139,7 @@ export default class Skope {
     let sub = this.sanitizer.observeAttribute(elem || document.documentElement, 'skope', (el) => {
       const comp = component || el.getAttribute('skope');
       const scope = getScope(this, el, subs, this.components[comp] || {}, true);
+      registerTemplates(this, el, [scope]);
       const processed = processHTML(this, el, subs, this.defaultDelegateObject);
       this.sanitizer.setAttributeForced(el, 'skope-processed', '');
       processed.run([scope]);

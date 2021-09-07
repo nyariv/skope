@@ -58,7 +58,8 @@ const globalAllowedAtttributes = new Set([
   'dir', 
   'lang',
   'height',
-  'width'
+  'width',
+  'slot'
 ]);
 
 export function sanitizeType(obj: HTMLSanitizer, t: (new () => Element)[], allowedAttributes: string[], element: (el: Element, preprocess: boolean) => boolean) {
@@ -265,7 +266,8 @@ export default class HTMLSanitizer {
       }
     }
     if (element.children) {
-      for (let el of [...element.children]) {
+      const children = element instanceof HTMLTemplateElement ? element.content.children : element.children;
+      for (let el of [...children]) {
         this.sanitizeHTML(el, staticHtml);
       }
     }

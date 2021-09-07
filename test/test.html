@@ -71,65 +71,68 @@
     </form>
     <div>
       <h2>Recursion</h2>
-<script>
-  if (typeof document !== 'undefined') {
-    console.error('not protect')
-  }
-var menu = [
-  {
-    text: "Item 1", 
-    children: []
-  }, {
-    text: "Item 2", 
-    children: [
-      {
-        text: "Item 3", 
-        children: []
-      }, {
-        text: "Item 4", 
-        children: []
-      }
-    ]
-  }, {
-    text: "Item 5", 
-    children: [
-      {
-        text: "Item 6", 
-        children: [
+      <script>
+        if (typeof document !== 'undefined') {
+          console.error('not protected')
+        }
+        var menu = [
           {
-            text: "Item 7", 
+            text: "Item 1", 
             children: []
           }, {
-            text: "Item 8", 
-            children: []
-          }
-        ]
-      }, {
-        text: "Item 9", 
-        children: [
-          {
-            text: "Item 10", 
-            children: []
+            text: "Item 2", 
+            children: [
+              {
+                text: "Item 3", 
+                children: []
+              }, {
+                text: "Item 4", 
+                children: []
+              }
+            ]
           }, {
-            text: "Item 11", 
+            text: "Item 5", 
+            children: [
+              {
+                text: "Item 6", 
+                children: [
+                  {
+                    text: "Item 7", 
+                    children: []
+                  }, {
+                    text: "Item 8", 
+                    children: []
+                  }
+                ]
+              }, {
+                text: "Item 9", 
+                children: [
+                  {
+                    text: "Item 10", 
+                    children: []
+                  }, {
+                    text: "Item 11", 
+                    children: []
+                  }
+                ]
+              }
+            ]
+          }, {
+            text: "Item 12", 
             children: []
           }
-        ]
-      }
-    ]
-  }, {
-    text: "Item 12", 
-    children: []
-  }
-];
-
-var template = `
-<li s-for="item in children" $children="item.children">
-  {{item.text}}
-  <ul s-if="item.children.length" s-html="template"></ul>
-</li>`;
-</script>
-        <ol $children="menu" s-html="template"></ol>
+        ];
+      </script>
+      
+      <template id="list-item-content" $children="[]">
+        <li s-for="item in children">
+          {{item.text}}
+          <ul s-if="item.children.length" s-component="list-item-content" $children="item.children"></ul>
+        </li>
+      </template>
+      <div>
+        <ol s-component="list-item-content" $children="menu"></ol>
+      </div>
     </div>
   </div>
 </body>

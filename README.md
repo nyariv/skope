@@ -128,6 +128,32 @@ Styles from outside the iframe are copied into it, so that styles can be defined
   </div>
 ```
 
+### Templates and components
+
+It is possible to define template elements that can be reused multiple times as components, which behave like web components.
+
+The ID attribute acts as the name of the component, and can be instantiated using the `s-component` attribute. The template will have a detached scope within the component. Attributes that are defined on the template will be copied and be processed on the component element, while variable attributes will be accessible within the template scope, they act like default values when defined on the template element.
+
+The `slot` attribute can be used as a placeholder for inner html of the component, like it behaves with web components. Only one slot element can be defined. Slot content will be replaced by component content, and the component content scope will continue from the component's parent scope. Template scope is detached.
+
+```html
+  <div $counter="0">
+
+    <div s-component="test" $name="'Earth'">Thank you {{counter}}</div>
+
+    <template id="test" $name="'World'" $counter="0">
+      <button @click="++counter">Hello {{name}}: {{counter}}</button>
+      <style>
+        div {
+          border: 1px solid #aaa;
+          width: 200px;
+        }
+      </style>
+      <slot></slot>
+    </template>
+  </div>
+```
+
 ### s-cloak
 
 This attribute is removed when the html is processed by skope. In the default stylesheet it is treated as `display: none`.

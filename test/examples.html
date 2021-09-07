@@ -54,6 +54,21 @@
       </iframe>
     </iframe>
   </div>
+
+  <div $counter="0">
+
+    <div s-component="test" $name="'Earth'">Thank you {{counter}}</div>
+
+    <template id="test" $name="'World'" $counter="0">
+      <button @click="++counter">Hello {{name}}: {{counter}}</button>
+      <style>
+        span {
+          color: green;
+        }
+      </style>
+      <span slot></span>
+    </template>
+  </div>
   
   <div> <span s-for="i in [1,2,3]"> {{i}} </span> </div>
 
