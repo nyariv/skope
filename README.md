@@ -61,18 +61,28 @@ Trigger throttled
   <button $counter="0" @click.throttle(700)="++counter">Throttled count: {{counter}}</button>
 ```
 
+Throttle until complete
+
+```html
+  <button $counter="0" @click.throttle="await $delay(700); ++counter">Throttle until complete: {{counter}}</button>
+```
+
 Trigger debounced
 
 ```html
   <button $counter="0" @click.debounce(700)="++counter">Debounced count: {{counter}}</button>
 ```
 
+Queued callbacks
+
+```html
+  <button $counter="0" @click.queue="await $delay(700); ++counter">Queue count: {{counter}}</button>
+```
+
 Save event callback promise to variable
 
 ```html
-  <div $var1="'none'">
-    <button  @click$var1="await $delay(500); return Math.random()">Event value: {{var1}}</button>
-  </div>
+  <button $var1="'none'" @click$var1="return Math.random()">Event value: {{var1}}</button>
 ```
 
 ### Attributes

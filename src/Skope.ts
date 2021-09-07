@@ -746,7 +746,8 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
           const parts = transitionParts[0].slice(1).split('.');
           const debouce = /^debounce(\((\d+)\))?$/.exec(parts[1] || "");
           const throttle = /^throttle(\((\d+)\))?$/.exec(parts[1] || "");
-          if (parts[1] && !(debouce || throttle || parts[1] === 'once')) {
+          const queue = /^queue(\((\d+)\))?$/.exec(parts[1] || "");
+          if (parts[1] && !(debouce || throttle || queue || parts[1] === 'once')) {
             createError('Invalid event directive: ' + parts[1], att);
             continue;
           }
@@ -758,12 +759,15 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
             }
           }
           ready((scopes) => {
+            if (transitionVar) {
+              skope.exec(getRootElement(skope, scopes), `if (typeof ${transitionVar} === 'undefined') var ${transitionVar}`, scopes).run();
+            }
             let trans: Promise<unknown>;
             const evCb = (e: EqEvent) => {
-              trans = skope.execAsync(getRootElement(scopes), att.nodeValue, pushScope(skope, scopes, element, currentSubs, {$event: e})).run();
+              trans = skope.execAsync(getRootElement(skope, scopes), att.nodeValue, pushScope(skope, scopes, element, currentSubs, {$event: e})).run();
               trans.catch(() => {});
               if (transitionVar) {
-                skope.exec(getRootElement(scopes), `${transitionVar} = trans`, pushScope(skope, scopes, element, currentSubs, {trans})).run();
+                skope.exec(getRootElement(skope, scopes), `${transitionVar} = trans`, pushScope(skope, scopes, element, currentSubs, {trans})).run();
               }
             }
             let ev = evCb;
@@ -778,19 +782,41 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
               }
             }
             if (throttle) {
-              let timer: any = null;
-              let eobj: EqEvent;
-              ev = (e: EqEvent) => {
-                eobj = e;
-                if (timer !== null) return
-                timer = setTimeout(() => {
-                  timer = null;
-                  evCb(eobj);
-                }, Number(throttle[2] || 250));
+              if (throttle[2] === undefined) {
+                let ready = false;
+                ev = (e: EqEvent) => {
+                  if (ready || !trans) {
+                    ready = false;
+                    evCb(e);
+                    trans.then(() => ready = true, () => ready = true);
+                  }
+                }
+              } else {
+                let eobj: EqEvent;
+                let timer: any = null;
+                ev = (e: EqEvent) => {
+                  eobj = e;
+                  if (timer !== null) return
+                  timer = setTimeout(() => {
+                    timer = null;
+                    evCb(eobj);
+                  }, Number(throttle[2]));
+                }
               }
             }
-            if (transitionVar) {
-              skope.exec(getRootElement(scopes), `if (typeof ${transitionVar} === 'undefined') var ${transitionVar}`, scopes).run();
+
+            if (queue) {
+              let count = 0;
+              let q: Promise<any> = Promise.resolve();
+              ev = (e: EqEvent) => {
+                if (!queue[2]  || Number(queue[2]) > count) {
+                  count++;
+                  q = q.then(() => {
+                    evCb(e);
+                    return trans;
+                  }).catch(() => {}).then(() => count--);
+                }
+              }
             }
             if (parts[1] === 'once') {
               currentSubs.push(delegate.one(element, parts[0], ev));

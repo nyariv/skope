@@ -18,7 +18,13 @@
 
   <button $counter="0" @click.throttle(700)="++counter">Throttled count: {{counter}}</button>
 
-  <button $counter="0" @click.debounce(700)="++counter">Debounced count: {{counter}}</button>
+  <button $counter="0" @click.throttle="await $delay(700); ++counter">Throttle until complete: {{counter}}</button>
+
+  <button $counter="0" @click.debounce(700)="await $delay(700); ++counter">Debounced count: {{counter}}</button>
+
+  <button $counter="0" @click.queue="await $delay(700); ++counter">Queue count: {{counter}}</button>
+
+  <button $var1="'none'" @click$var1="return Math.random()">Event value: {{var1}}</button>
 
   <style>
     .red {color: red}
