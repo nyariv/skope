@@ -112,9 +112,7 @@ Styles from outside the iframe are copied into it, so that styles can be defined
   <div $counter="0" class="iframe-container">
     <iframe>
       <iframe>
-        <iframe>
-          <button @click="++counter" class="ok">Counter: {{counter}}</button>
-        </iframe>
+        <button @click="++counter" class="ok">Counter: {{counter}}</button>
       </iframe>
     </iframe>
   </div>

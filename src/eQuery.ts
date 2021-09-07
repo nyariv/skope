@@ -115,6 +115,10 @@ export function ownerDoc(coll: IElementCollection): HTMLDocument|undefined {
   return coll.get(0)?.ownerDocument;
 }
 
+export function isIterable(x: unknown): x is Iterable<unknown> {
+  return x && typeof x === 'object' && Symbol.iterator in x;
+}
+
 export default function createClass(sanitizer: () => HTMLSanitizer): {
   getStore: <T>(elem: Node, store: string, defaultValue?: T) => T,
   deleteStore: (elem: Element, store: string) => boolean,
@@ -161,15 +165,15 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
     }
   
     [Symbol.iterator]() {
-      return arr(this)[Symbol.iterator]();
+      return this.$elements[Symbol.iterator]();
     }
   
     forEach(cb: (elem?: Element, i?: number) => void) {
-      arr(this).forEach(cb);
+      this.$elements.forEach(cb);
     }
   
     map<T>(cb: (elem?: Element, i?: number) => T): T[] {
-      return arr(this).map(cb);
+      return this.$elements.map(cb);
     }
   
     filter(selector: wrapType|((elem?: Element, i?: number) => boolean)): IElementCollection {
@@ -177,11 +181,11 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
     }
   
     some(cb: (elem: Element, i: number) => boolean): boolean {
-      return arr(this).some(cb);
+      return this.$elements.some(cb);
     }
   
     every(cb: (elem: Element, i: number) => boolean): boolean {
-      return arr(this).every(cb);
+      return this.$elements.every(cb);
     }
   
     slice(start?: number, end?: number): IElementCollection {
@@ -199,7 +203,8 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
           return -1;
         });
       } else {
-        arr(this).sort(callback);
+        let sorted = this.$elements.sort(callback);
+        arrs.set(this, sorted);
       }
       return this;
     }
@@ -278,7 +283,8 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
      */
     find(selector: wrapType|search): IElementCollection {
       if (typeof selector === 'function') {
-        return new ElementCollection(arr(this).find((a, b, c) => (selector as search)(a, b)));
+        let sel = selector;
+        return new ElementCollection(arr(this).find((a, b, c) => sel(a, b)));
       }
       return wrap(selector, this);
     }
@@ -484,7 +490,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
         .once('eqAllyClick')
         .addClass('eq-ally-click')
         .on('keydown', (e: KeyboardEvent) => {
-          if (e.keyCode === 13 && e.currentTarget instanceof HTMLElement &&
+          if (e.key.toLowerCase() === 'enter' && e.currentTarget instanceof HTMLElement &&
               e.currentTarget.getAttribute('aria-disabled') !== 'true') {
             e.currentTarget.click();
           }
@@ -859,7 +865,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
     siblings(selector?: string) {
       return wrap([
         propElem(this, 'nextElementSibling', selector, true),
-        propElem(this, 'previousElementSibling', selector, true, false, false, true)
+        propElem(this, 'previousElementSibling', selector, true, false, undefined, true)
       ], this);
     }
     
@@ -935,8 +941,8 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
 
   /**
    * Query function to get elements
-   * @param {*} selector 
-   * @param {*} [context] 
+   * @param {wrapType} selector 
+   * @param {IElementCollection|HTMLDocument} context trusted to be HTMLDocument or ElementCollection
    * @returns {ElementCollection}
    */
   function wrap(selector: wrapType, context: IElementCollection|HTMLDocument): IElementCollection {
@@ -945,9 +951,10 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
       return from(selector);
     }
     if (!context) return new ElementCollection();
-    let doc = (context instanceof ElementCollection ? ownerDoc(context) : context as HTMLDocument);
+    let doc = context instanceof ElementCollection ? ownerDoc(context) : context as HTMLDocument;
+    if (!doc) return new ElementCollection();
     
-    let selectors = selector instanceof Array ? selector : [selector];
+    let selectors: Array<unknown> = selector instanceof Array ? selector : [selector];
     let $context = context instanceof ElementCollection ? context : new ElementCollection(doc.documentElement);
     let elems = new Set<Element>();
     let doFilter = true;
@@ -958,14 +965,15 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
       if (sel instanceof Element) {
         elems.add(sel);
       } else if (typeof sel === 'string') {
+        let s = sel;
         $context.forEach((cElem) => {
-          cElem.querySelectorAll(':scope ' + sel).forEach((elem) => elems.add(elem));
+          cElem.querySelectorAll(':scope ' + s).forEach((elem) => elems.add(elem));
         });
         if (selectors.length === 1) {
           doFilter = false;
           doSort = false;
         }
-      } else {
+      } else if (isIterable(sel)) {
         for (let elem of sel) {
           if(elem instanceof Element) {
             elems.add(elem);
@@ -1030,26 +1038,35 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
   
   /**
    * Get element from another element's property recursively, filtered by selector.
+   * @param {IElementCollection|Array<Element>} collection 
+   * @param {string} prop 
+   * @param {string|undefined} selector 
+   * @param {boolean|undefined} multiple 
+   * @param {boolean|undefined} includeFirst 
+   * @param {string|Element|undefined} stopAt 
+   * @param {boolean|undefined} reverse 
+   * @returns {Set<Element>}
    */
-  function propElem(collection: IElementCollection|Array<Element>, prop: string, selector?: string, multiple?: boolean, includeFirst?: boolean, stopAt?: string|Element|boolean, reverse?: boolean): Set<Element> {
+  function propElem(collection: IElementCollection|Array<Element>, prop: string, selector?: string, multiple?: boolean, includeFirst?: boolean, stopAt?: string|Element, reverse?: boolean): Set<Element> {
     let res = new Set<Element>();
     let cache = new Set<Element>();
-    let is = (elem: Element, sel: Element|string|boolean) => {
+    let sSelector = typeof selector === 'string' ? selector : undefined;
+    let is = (elem: Element, sel?: string|Element) => {
       if (!(elem instanceof Element)) return false;
       if (!sel) return true;
       if (typeof sel === 'string') return elem.matches(sel);
       if (sel instanceof Array) return sel.includes(elem);
       return elem === sel;
     };
-    let coll: Element[];
+    let coll: unknown[] = [];
     if (collection instanceof ElementCollection) {
       coll = arr(collection);
-    } else {
-      coll = collection as Element[]
+    } else if(collection instanceof Array) {
+      coll = collection;
     }
     for (let i = reverse ? coll.length - 1 : 0; reverse ? i >= 0 : i < coll.length; reverse ? i-- : i++) {
       let elem = coll[i];
-      if (!elem) continue;
+      if (!elem || !(elem instanceof Element)) continue;
       if (cache.has(elem)) continue;
       cache.add(elem);
       let next = (<any>elem)[prop];
@@ -1058,7 +1075,7 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
       }
       if (!next || (stopAt && is(next, stopAt))) continue;
       do {
-        if (is(next, selector)) {
+        if (is(next, sSelector)) {
           res.add(next);
         }
         cache.add(next);

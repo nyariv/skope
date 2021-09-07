@@ -2,16 +2,12 @@
 
 import Sandbox, { IExecContext } from '@nyariv/sandboxjs';
 import { Change } from '@nyariv/sandboxjs/dist/node/executor';
-import createClass, { EqEvent, wrapType, DelegateObject, ownerDoc } from './eQuery'
+import createClass, { EqEvent, wrapType, DelegateObject, ownerDoc, isIterable } from './eQuery'
 import { IElementCollection } from './eQuery';
 import HTMLSanitizer from './HTMLSanitizer';
 
 const regVarName = /^\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*$/;
 const regKeyValName = /^\s*\(([a-zA-Z$_][a-zA-Z$_\d]*)\s*,\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*\)$/;
-
-function isIterable (object: any): object is Iterable<unknown> {
-  return object !== null && typeof object === 'object' && typeof object[Symbol.iterator] === 'function';
-}
 
 function isObject (object: any): object is {[key: string]: unknown} {
   return object !== null && typeof object === 'object';
@@ -188,11 +184,17 @@ function initialize (skope: Skope) {
     if (content === undefined) {
       return this.get(0)?.innerHTML;
     }
+    if (!(content instanceof Node || typeof content == 'string' || content instanceof ElementCollection)) {
+      return this;
+    }
     let elem = this.get(0);
     if (!elem) return this;
     let contentElem: Node;
+    let html: Node|string;
     if (content instanceof ElementCollection) {
-      content = (content as any).detach() as DocumentFragment;
+      html = (content as any).detach() as DocumentFragment;
+    } else {
+      html = content;
     }
     let currentSubs: subs = getStore<subs>(elem, 'currentSubs', []);
     let scopes = getScopes(skope, elem, currentSubs);
@@ -226,7 +228,7 @@ function initialize (skope: Skope) {
       }
       elem.innerHTML = '';
     }
-    contentElem = preprocessHTML(skope, elem, content);
+    contentElem = preprocessHTML(skope, elem, html);
     scopes = getScopes(skope, elem, currentSubs, {});
     elem.appendChild(contentElem);
     const processed = processHTML(skope, elem, currentSubs, defaultDelegateObject, true);
@@ -235,9 +237,10 @@ function initialize (skope: Skope) {
   };
   ElementCollection.prototype.text = function (set?: string) {
     if (set !== undefined) {
+      let toSet = set + "";
       this.forEach((elem: Element) => {
         unsubNested(getStore<subs>(elem, 'childSubs'));
-        elem.textContent = set;
+        elem.textContent = toSet;
       });
       return this;
     }
@@ -533,7 +536,6 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
   }
   if (element instanceof Element) {
     skope.getStore(element, 'currentSubs', parentSubs);
-    const $element = skope.wrapElem(element);
     element.removeAttribute('s-cloak');
     if (element.hasAttribute('s-if')) {
       const comment = document.createComment('s-if');
@@ -647,9 +649,16 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
     }
     if (element instanceof HTMLIFrameElement && element.hasAttribute('skope-iframe-content')) {
       ready(() => {
-        //@ts-ignore
-        skope.wrapElem(element).html(element.getAttribute('skope-iframe-content'));
-        element.removeAttribute('skope-iframe-content');
+        const exec = () => {
+          //@ts-ignore
+          skope.wrapElem(element).html(element.getAttribute('skope-iframe-content'));
+          element.removeAttribute('skope-iframe-content');
+        }
+        if (element.contentDocument.readyState !== 'complete') {
+          element.addEventListener('load', exec);
+        } else {
+          exec();
+        }
       });
     }
     if (element.hasAttribute('s-detached')) {
@@ -701,6 +710,7 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
           const at = att.nodeName.slice(1);
           const parts = at.split('.');
           ready((scopes) => {
+            const $element = skope.wrapElem(element);
             currentSubs.push(skope.watch(att, watchRun(skope, scopes, att.nodeValue), (val: any, lastVal) => {
               if (typeof val === 'object' && ['style', 'class'].includes(at)) {
                 Object.entries(val).forEach((a) => Promise.resolve(a[1]).then((v) => {

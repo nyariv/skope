@@ -9,7 +9,7 @@ const defaultHTMLWhiteList: (new () => Element)[] = [
   HTMLDListElement,
   HTMLDataElement,
   HTMLDataListElement,
-  HTMLDialogElement,
+  // HTMLDialogElement, // unsupported by firefox
   HTMLDivElement,
   HTMLFieldSetElement,
   HTMLFormElement,
@@ -144,15 +144,19 @@ export default class HTMLSanitizer {
     sanitizeType(this, [HTMLScriptElement], ['type'], (el: HTMLScriptElement, staticHtml) => {
       if (!el.type || el.type === 'text/javascript') {
         el.type = 'skopejs';
+        const html = el.innerHTML;
+        el.innerHTML = '';
+        setTimeout(() => {
+          el.innerHTML = html;
+        });
       }
       return !staticHtml && el.type === "skopejs";
     });
 
     sanitizeType(this, [HTMLIFrameElement], [], (el: HTMLIFrameElement) => {
       this.setAttributeForced(el, 'skope-iframe-content', el.innerHTML);
-      el.innerHTML = '';
       return !el.src && !el.srcdoc;
-    })
+    });
 
     const processedStyles: WeakSet<HTMLStyleElement> = new WeakSet();
     sanitizeType(this, [HTMLStyleElement], [], (el: HTMLStyleElement, staticHtml) => {
