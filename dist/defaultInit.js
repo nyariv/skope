@@ -4,7 +4,7 @@
     var regHrefJS = /^\s*javascript\s*:/i;
     var regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
     var regSystemAtt = /^(:|@|\$|s\-)/;
-    var defaultHTMLWhiteList = [HTMLBRElement, HTMLBodyElement, HTMLDListElement, HTMLDataElement, HTMLDataListElement, HTMLDialogElement, HTMLDivElement, HTMLFieldSetElement, HTMLFormElement, HTMLHRElement, HTMLHeadingElement, HTMLLIElement, HTMLLegendElement, HTMLMapElement, HTMLMetaElement, HTMLMeterElement, HTMLModElement, HTMLOListElement, HTMLOutputElement, HTMLParagraphElement, HTMLPreElement, HTMLProgressElement, HTMLQuoteElement, HTMLSpanElement, HTMLTableCaptionElement, HTMLTableCellElement, HTMLTableColElement, HTMLTableElement, HTMLTableSectionElement, HTMLTableRowElement, HTMLTimeElement, HTMLTitleElement, HTMLUListElement, HTMLUnknownElement, HTMLTemplateElement, HTMLCanvasElement, HTMLElement];
+    var defaultHTMLWhiteList = [HTMLBRElement, HTMLBodyElement, HTMLDListElement, HTMLDataElement, HTMLDataListElement, HTMLDivElement, HTMLFieldSetElement, HTMLFormElement, HTMLHRElement, HTMLHeadingElement, HTMLLIElement, HTMLLegendElement, HTMLMapElement, HTMLMetaElement, HTMLMeterElement, HTMLModElement, HTMLOListElement, HTMLOutputElement, HTMLParagraphElement, HTMLPreElement, HTMLProgressElement, HTMLQuoteElement, HTMLSpanElement, HTMLTableCaptionElement, HTMLTableCellElement, HTMLTableColElement, HTMLTableElement, HTMLTableSectionElement, HTMLTableRowElement, HTMLTimeElement, HTMLTitleElement, HTMLUListElement, HTMLUnknownElement, HTMLTemplateElement, HTMLCanvasElement, HTMLElement];
     var globalAllowedAtttributes = new Set(['id', 'class', 'style', 'alt', 'role', 'aria-label', 'aria-labelledby', 'aria-hidden', 'tabindex', 'title', 'dir', 'lang', 'height', 'width']);
     function sanitizeType(obj, t, allowedAttributes, element) {
       var s = new Set(allowedAttributes);
@@ -42,13 +42,17 @@
         sanitizeType(this, [HTMLScriptElement], ['type'], (el, staticHtml) => {
           if (!el.type || el.type === 'text/javascript') {
             el.type = 'skopejs';
+            var html = el.innerHTML;
+            el.innerHTML = '';
+            setTimeout(() => {
+              el.innerHTML = html;
+            });
           }
 
           return !staticHtml && el.type === "skopejs";
         });
         sanitizeType(this, [HTMLIFrameElement], [], el => {
           this.setAttributeForced(el, 'skope-iframe-content', el.innerHTML);
-          el.innerHTML = '';
           return !el.src && !el.srcdoc;
         });
         var processedStyles = new WeakSet();
