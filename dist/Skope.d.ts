@@ -13,6 +13,9 @@ interface IElementScope {
     $delay(ms: number): Promise<void>;
 }
 interface IRootScope extends IElementScope {
+    $templates: {
+        [name: string]: HTMLTemplateElement;
+    };
     $refs: {
         [name: string]: IElementCollection;
     };
@@ -54,6 +57,7 @@ export default class Skope {
     deleteStore: (elem: Element, store: string) => boolean;
     RootScope: new (el: Element) => IRootScope;
     ElementScope: new (el: Element) => IElementScope;
+    styleIds: number;
     constructor(options?: {
         sanitizer?: HTMLSanitizer;
         executionQuote?: bigint;

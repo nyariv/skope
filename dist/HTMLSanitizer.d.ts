@@ -7,7 +7,7 @@ export default class HTMLSanitizer {
     srcAttributes: Set<string>;
     allowedInputs: Set<string>;
     constructor();
-    santizeAttribute(element: Element, attName: string, attValue: string, preprocess?: boolean): boolean;
+    santizeAttribute(element: Element, attName: string, attValue: string, preprocess?: boolean, remove?: boolean): boolean;
     sanitizeHTML(element: Element | DocumentFragment, staticHtml?: boolean): void;
     isAttributeForced(elem: Element, att: string): boolean;
     setAttributeForced(elem: Element, att: string, value: string): void;

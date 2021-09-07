@@ -1,3 +1,56 @@
+function ownKeys(object, enumerableOnly) {
+  var keys = Object.keys(object);
+
+  if (Object.getOwnPropertySymbols) {
+    var symbols = Object.getOwnPropertySymbols(object);
+
+    if (enumerableOnly) {
+      symbols = symbols.filter(function (sym) {
+        return Object.getOwnPropertyDescriptor(object, sym).enumerable;
+      });
+    }
+
+    keys.push.apply(keys, symbols);
+  }
+
+  return keys;
+}
+
+function _objectSpread2(target) {
+  for (var i = 1; i < arguments.length; i++) {
+    var source = arguments[i] != null ? arguments[i] : {};
+
+    if (i % 2) {
+      ownKeys(Object(source), true).forEach(function (key) {
+        _defineProperty(target, key, source[key]);
+      });
+    } else if (Object.getOwnPropertyDescriptors) {
+      Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
+    } else {
+      ownKeys(Object(source)).forEach(function (key) {
+        Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key));
+      });
+    }
+  }
+
+  return target;
+}
+
+function _defineProperty(obj, key, value) {
+  if (key in obj) {
+    Object.defineProperty(obj, key, {
+      value: value,
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
+  } else {
+    obj[key] = value;
+  }
+
+  return obj;
+}
+
 function getDefaultExportFromCjs (x) {
 	return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, 'default') ? x['default'] : x;
 }
@@ -3330,7 +3383,7 @@ var Sandbox$1 = {};
         const context = this.createContext(this.context, parsed);
         return {
           context,
-          run: async () => (await this.executeTreeAsync(context, [...scopes])).result
+          run: () => this.executeTreeAsync(context, [...scopes]).then(ret => ret.result)
         };
       };
 
@@ -3358,7 +3411,7 @@ var Sandbox$1 = {};
         const context = this.createContext(this.context, parsed);
         return {
           context,
-          run: async () => (await this.executeTreeAsync(context, [...scopes])).result
+          run: () => this.executeTreeAsync(context, [...scopes]).then(ret => ret.result)
         };
       };
 
@@ -3790,7 +3843,11 @@ function createClass(sanitizer) {
 
     removeAttr(key) {
       this.forEach(elem => {
-        elem.removeAttribute(key);
+        if (sanitizer().santizeAttribute(elem, key, "", false, true)) {
+          elem.removeAttribute(key);
+        } else {
+          throw new Error("Not allowed to remove attribute [" + key + "] value for <" + elem.nodeName.toLowerCase() + ">");
+        }
       });
       return this;
     }
@@ -4346,7 +4403,7 @@ var regHrefJS = /^\s*javascript\s*:/i;
 var regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
 var regSystemAtt = /^(:|@|\$|s\-)/;
 var defaultHTMLWhiteList = [HTMLBRElement, HTMLBodyElement, HTMLDListElement, HTMLDataElement, HTMLDataListElement, HTMLDivElement, HTMLFieldSetElement, HTMLFormElement, HTMLHRElement, HTMLHeadingElement, HTMLLIElement, HTMLLegendElement, HTMLMapElement, HTMLMetaElement, HTMLMeterElement, HTMLModElement, HTMLOListElement, HTMLOutputElement, HTMLParagraphElement, HTMLPreElement, HTMLProgressElement, HTMLQuoteElement, HTMLSpanElement, HTMLTableCaptionElement, HTMLTableCellElement, HTMLTableColElement, HTMLTableElement, HTMLTableSectionElement, HTMLTableRowElement, HTMLTimeElement, HTMLTitleElement, HTMLUListElement, HTMLUnknownElement, HTMLTemplateElement, HTMLCanvasElement, HTMLElement];
-var globalAllowedAtttributes = new Set(['id', 'class', 'style', 'alt', 'role', 'aria-label', 'aria-labelledby', 'aria-hidden', 'tabindex', 'title', 'dir', 'lang', 'height', 'width']);
+var globalAllowedAtttributes = new Set(['id', 'class', 'style', 'alt', 'role', 'aria-label', 'aria-labelledby', 'aria-hidden', 'tabindex', 'title', 'dir', 'lang', 'height', 'width', 'slot']);
 function sanitizeType(obj, t, allowedAttributes, element) {
   var s = new Set(allowedAttributes);
 
@@ -4357,7 +4414,6 @@ function sanitizeType(obj, t, allowedAttributes, element) {
     });
   }
 }
-var styleIds = 0;
 var reservedAtrributes = new WeakMap();
 class HTMLSanitizer {
   constructor() {
@@ -4396,51 +4452,8 @@ class HTMLSanitizer {
       this.setAttributeForced(el, 'skope-iframe-content', el.innerHTML);
       return !el.src && !el.srcdoc;
     });
-    var processedStyles = new WeakSet();
     sanitizeType(this, [HTMLStyleElement], [], (el, staticHtml) => {
       if (staticHtml) return false;
-
-      var loaded = () => {
-        var parent = el.parentElement;
-        if (!parent) return false;
-        if (processedStyles.has(el)) return true;
-        processedStyles.add(el);
-
-        if (!this.isAttributeForced(parent, 'skope-style')) {
-          parent.removeAttribute('skope-style');
-        }
-
-        var id = parent.getAttribute('skope-style') || ++styleIds;
-        this.setAttributeForced(parent, 'skope-style', id + "");
-        var i = el.sheet.cssRules.length - 1;
-
-        for (var rule of [...el.sheet.cssRules].reverse()) {
-          if (!(rule instanceof CSSStyleRule || rule instanceof CSSKeyframesRule)) {
-            el.sheet.deleteRule(i);
-          }
-
-          i--;
-        }
-
-        i = 0;
-
-        for (var _rule of [...el.sheet.cssRules]) {
-          if (_rule instanceof CSSStyleRule) {
-            var cssText = _rule.style.cssText;
-            el.sheet.deleteRule(i);
-            el.sheet.insertRule("[skope-style=\"".concat(id, "\"] :is(").concat(_rule.selectorText, ") { ").concat(cssText, " }"), i);
-          }
-
-          i++;
-        }
-      };
-
-      if (el.sheet && el.parentElement) {
-        loaded();
-      } else {
-        el.addEventListener('load', loaded);
-      }
-
       return true;
     });
     sanitizeType(this, [HTMLPictureElement, HTMLImageElement, HTMLAudioElement, HTMLTrackElement, HTMLVideoElement, HTMLSourceElement], ['src', 'srcset', 'sizes', 'poster', 'autoplay', 'contorls', 'muted', 'loop', 'volume', 'loading'], el => {
@@ -4450,6 +4463,7 @@ class HTMLSanitizer {
 
   santizeAttribute(element, attName, attValue) {
     var preprocess = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
+    var remove = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : false;
     var allowed = this.types.get(element.constructor);
     if (!allowed) return false;
     attName = attName.toLowerCase();
@@ -4478,12 +4492,20 @@ class HTMLSanitizer {
       } else if (!attValue.match(regValidSrc)) {
         return false;
       }
+    } else if (!preprocess && element instanceof HTMLScriptElement) {
+      return false;
     } else if (!allowed.attributes.has(attName) && !globalAllowedAtttributes.has(attName)) {
       return false;
     } else if (element instanceof HTMLInputElement && attName == 'type') {
       return this.allowedInputs.has(attValue);
     } else if (element instanceof HTMLButtonElement && attName == 'type') {
       return attValue === 'reset' || attValue === 'button';
+    } else if (remove && this.isAttributeForced(element, attName)) {
+      return false;
+    }
+
+    if (attName === 'slot') {
+      element.innerHTML = '';
     }
 
     return true;
@@ -4513,7 +4535,9 @@ class HTMLSanitizer {
     }
 
     if (element.children) {
-      for (var el of [...element.children]) {
+      var children = element instanceof HTMLTemplateElement ? element.content.children : element.children;
+
+      for (var el of [...children]) {
         this.sanitizeHTML(el, staticHtml);
       }
     }
@@ -4689,10 +4713,18 @@ function isObject(object) {
   return object !== null && typeof object === 'object';
 }
 
-function getRootElement(scopes) {
-  var _scopes$;
+function getRootScope(skope, scopes) {
+  for (var i = scopes.length - 1; i >= 0; i--) {
+    if (scopes[i] instanceof skope.RootScope) {
+      return scopes[i];
+    }
+  }
+}
 
-  return (_scopes$ = scopes[0]) === null || _scopes$ === void 0 ? void 0 : _scopes$.$el.get(0);
+function getRootElement(skope, scopes) {
+  var _getRootScope;
+
+  return (_getRootScope = getRootScope(skope, scopes)) === null || _getRootScope === void 0 ? void 0 : _getRootScope.$el.get(0);
 }
 
 class Component {}
@@ -4786,19 +4818,11 @@ function call(cb) {
   });
 }
 
-function walkerInstance() {
-  var execSteps = [];
-  return {
-    ready: cb => execSteps.push(cb),
-    run: function runNested(scopes) {
-      execSteps.forEach(cb => cb(scopes));
-    }
-  };
-}
-
 function runDirective(skope, exec, scopes) {
-  if (skope.directives[exec.directive]) {
-    return skope.directives[exec.directive](exec, scopes);
+  var dir = skope.directives[exec.directive];
+
+  if (dir) {
+    return dir(exec, scopes);
   }
 
   return [];
@@ -4849,8 +4873,9 @@ function initialize(skope) {
   }
 
   class RootScope extends ElementScope {
-    constructor() {
-      super(...arguments);
+    constructor(el) {
+      super(el);
+      this.$templates = {};
       this.$refs = {};
     }
 
@@ -4867,7 +4892,7 @@ function initialize(skope) {
       return (_this$get = this.get(0)) === null || _this$get === void 0 ? void 0 : _this$get.innerHTML;
     }
 
-    if (!(content instanceof Node || typeof content == 'string' || content instanceof ElementCollection)) {
+    if (content === null || !(content instanceof DocumentFragment || content instanceof Element || typeof content == 'string' || content instanceof ElementCollection)) {
       return this;
     }
 
@@ -4919,8 +4944,15 @@ function initialize(skope) {
       elem.innerHTML = '';
     }
 
-    contentElem = preprocessHTML(skope, elem, html);
-    scopes = getScopes(skope, elem, currentSubs, {});
+    if (elem instanceof HTMLTemplateElement) {
+      scopes = getScopes(skope, elem, currentSubs, {});
+      contentElem = elem.content;
+    } else {
+      scopes = getScopes(skope, elem, currentSubs, {});
+      contentElem = preprocessHTML(skope, elem, html);
+      registerTemplates(skope, contentElem, scopes);
+    }
+
     elem.appendChild(contentElem);
     var processed = processHTML(skope, elem, currentSubs, defaultDelegateObject, true);
     processed.run(scopes);
@@ -4987,6 +5019,57 @@ function initialize(skope) {
       skope.exec(document, "$refs[name] = $refs[name].not($el)", [...scopes, name]).run();
     }];
   });
+  var div = document.createElement('div');
+  div.innerHTML = '<span $$templates="$templates"><span>';
+  var $$templatesAttr = div.querySelector('span').attributes.item(0);
+  skope.defineDirective('component', (exec, scopes) => {
+    var _getRootScope2;
+
+    var template = (_getRootScope2 = getRootScope(skope, scopes)) === null || _getRootScope2 === void 0 ? void 0 : _getRootScope2.$templates[exec.att.nodeValue];
+
+    if (!template) {
+      createError('Template not found', exec.att);
+      return [];
+    }
+
+    var elem = exec.element;
+
+    for (var attribute of template.attributes) {
+      var name = attribute.nodeName.toLowerCase();
+      if (name === 'id') continue;
+      if (elem.hasAttribute(name)) continue;
+      elem.setAttributeNode(attribute.cloneNode(true));
+    }
+
+    elem.setAttributeNode($$templatesAttr.cloneNode(true));
+    var slotContent = document.createDocumentFragment();
+    slotContent.append(...elem.childNodes);
+    elem.appendChild(template.content.cloneNode(true));
+    var slot = elem.querySelector('[slot]');
+    var detached = elem.hasAttribute('s-detached');
+    var subs = [];
+    var delegate = skope.wrapElem(elem).delegate();
+    elem.removeAttribute('s-component');
+    elem.setAttribute('s-detached', '');
+    var run = processHTML(skope, elem, subs, delegate);
+    elem.removeAttribute('s-detached');
+    elem.setAttribute('s-component', exec.att.nodeValue);
+    elem.setAttribute('component-processed', '');
+    run.run(pushScope(skope, scopes, elem, subs));
+
+    if (slot) {
+      slot.appendChild(slotContent);
+
+      if (detached) {
+        slot.setAttribute('s-detached', '');
+      }
+
+      var run2 = processHTML(skope, slot, subs, exec.delegate);
+      run2.run(scopes);
+    }
+
+    return subs;
+  });
   skope.defineDirective('model', (exec, scopes) => {
     var el = exec.element;
     var isContentEditable = el instanceof HTMLElement && (el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === '');
@@ -5003,7 +5086,7 @@ function initialize(skope) {
       last = !isContentEditable ? $el.val() : $el.html();
 
       try {
-        skope.exec(getRootElement(scopes), exec.js.trim() + ' = ($$value === undefined && !reset) ? ' + exec.js.trim() + ' : $$value', pushScope(skope, scopes, el, exec.subs, {
+        skope.exec(getRootElement(skope, scopes), exec.js.trim() + ' = ($$value === undefined && !reset) ? ' + exec.js.trim() + ' : $$value', pushScope(skope, scopes, el, exec.subs, {
           $$value: last,
           reset
         })).run();
@@ -5078,16 +5161,28 @@ function initialize(skope) {
 
 function getScope(skope, element, subs) {
   var vars = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
-  var root = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : false;
+  var root = arguments.length > 4 ? arguments[4] : undefined;
   var scope = skope.getStore(element, 'scope');
+
+  if (root) {
+    scope = skope.getStore(element, 'rootScope');
+  }
 
   if (!scope) {
     skope.getStore(element, 'currentSubs', subs);
-    scope = skope.getStore(element, 'scope', root ? new skope.RootScope(element) : new skope.ElementScope(element));
+
+    if (root) {
+      scope = skope.getStore(element, 'rootScope', new skope.RootScope(element));
+      skope.getStore(element, 'scope', scope);
+    } else {
+      scope = skope.getStore(element, 'scope', new skope.ElementScope(element));
+    }
+
     subs.push(() => {
       scope.$el = null;
       skope.deleteStore(element, 'currentSubs');
       skope.deleteStore(element, 'scope');
+      skope.deleteStore(element, 'rootScope');
     });
   }
 
@@ -5118,7 +5213,7 @@ function createVarSubs(skope, context) {
 }
 
 function watchRun(skope, scopes, code) {
-  var exec = skope.exec(getRootElement(scopes), 'return ' + code, scopes);
+  var exec = skope.exec(getRootElement(skope, scopes), 'return ' + code, scopes);
   varSubsStore.set(exec.run, createVarSubs(skope, exec.context));
   return exec.run;
 }
@@ -5130,10 +5225,8 @@ function preprocessHTML(skope, parent, html) {
     var template = document.createElement('template');
     template.innerHTML = html;
     elem = template.content;
-  } else if (html instanceof Element) {
-    elem = html;
   } else {
-    return html;
+    elem = html;
   }
 
   if (parent.matches('[s-static], [s-static] *')) {
@@ -5149,6 +5242,38 @@ function preprocessHTML(skope, parent, html) {
   }
 
   return elem;
+}
+
+function registerTemplates(skope, elem, scopes) {
+  var root = getRootScope(skope, scopes);
+  if (!root) return;
+
+  var recurse = elem => {
+    elem.querySelectorAll('template[id]:not([s-static] template, [s-detached] template)').forEach(template => {
+      if (template.id) {
+        if (root.$templates[template.id]) {
+          createError('Duplicate template definition', template);
+        } else {
+          root.$templates[template.id] = template;
+        }
+      } else {
+        recurse(template.content);
+      }
+    });
+  };
+
+  recurse(elem);
+}
+
+function walkerInstance() {
+  var execSteps = [];
+  return {
+    ready: cb => execSteps.push(cb),
+    run: function runNested(scopes) {
+      execSteps.forEach(cb => cb(scopes));
+      execSteps.length = 0;
+    }
+  };
 }
 
 function processHTML(skope, elem, subs, delegate) {
@@ -5181,11 +5306,9 @@ function unsubNested(subs) {
 }
 
 function pushScope(skope, scopes, elem, sub, vars) {
-  skope.getStore(elem, 'scope');
   var scope = getScope(skope, elem, sub, vars);
-  scopes = scopes.slice();
-  scopes.push(scope);
-  return scopes;
+  if (scope === scopes[scopes.length - 1]) return [...scopes];
+  return [...scopes, scope];
 }
 
 function createError(msg, el) {
@@ -5213,14 +5336,22 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
         var found = false;
         strings.forEach(s => {
           if (s.startsWith("{{") && s.endsWith("}}")) {
+            skope.getStore(el, 'currentSubs', currentSubs);
             found = true;
             var placeholder = document.createTextNode("");
             ready(scopes => {
-              currentSubs.push(skope.watch(element, watchRun(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
-                placeholder.textContent = val + "";
-              }, err => {
-              }));
-              return scopes;
+              try {
+                currentSubs.push(skope.watch(element, watchRun(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
+                  placeholder.textContent = val + "";
+                }, err => {
+                  () => {
+                    placeholder.textContent = "";
+                  };
+                }));
+                return scopes;
+              } catch (err) {
+                createError(err.message, element);
+              }
             });
             nodes.push(placeholder);
           } else {
@@ -5254,6 +5385,10 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
   }
 
   if (element instanceof Element) {
+    if (element instanceof HTMLTemplateElement) {
+      return;
+    }
+
     skope.getStore(element, 'currentSubs', parentSubs);
     element.removeAttribute('s-cloak');
 
@@ -5268,29 +5403,34 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
         skope.getStore(comment, 'currentSubs', currentSubs);
         var nestedSubs = [];
         currentSubs.push(nestedSubs);
-        currentSubs.push(skope.watch(element.getAttributeNode('s-if'), watchRun(skope, scopes, at), (val, lastVal) => {
-          if (val) {
-            if (!ifElem) {
-              ifElem = element.cloneNode(true);
-              ifElem.removeAttribute('s-if');
-              var processed = processHTML(skope, ifElem, nestedSubs, delegate);
-              comment.after(processed.elem);
-              processed.run(pushScope(skope, scopes, ifElem, nestedSubs));
+
+        try {
+          currentSubs.push(skope.watch(element.getAttributeNode('s-if'), watchRun(skope, scopes, at), (val, lastVal) => {
+            if (val) {
+              if (!ifElem) {
+                ifElem = element.cloneNode(true);
+                ifElem.removeAttribute('s-if');
+                var processed = processHTML(skope, ifElem, nestedSubs, delegate);
+                comment.after(processed.elem);
+                processed.run(pushScope(skope, scopes, ifElem, nestedSubs));
+              }
+            } else {
+              if (ifElem) {
+                ifElem.remove();
+                ifElem = undefined;
+                unsubNested(nestedSubs);
+              }
             }
-          } else {
+          }, err => {
             if (ifElem) {
               ifElem.remove();
               ifElem = undefined;
               unsubNested(nestedSubs);
             }
-          }
-        }, err => {
-          if (ifElem) {
-            ifElem.remove();
-            ifElem = undefined;
-            unsubNested(nestedSubs);
-          }
-        }));
+          }));
+        } catch (err) {
+          createError(err.message, element.getAttributeNode('s-if'));
+        }
       });
       return;
     }
@@ -5333,54 +5473,178 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
         currentSubs.push(del.off);
         var nestedSubs = [];
         currentSubs.push(nestedSubs);
-        currentSubs.push(skope.watch(element.getAttributeNode('s-for'), watchRun(skope, scopes, exp), val => {
-          unsubNested(nestedSubs);
-          items.forEach(item => {
-            item.remove();
-          });
-          items.clear();
-          var runs = [];
 
-          var repeat = (item, i) => {
-            var forSubs = [];
-            nestedSubs.push(forSubs);
-            var scope = {
-              $index: i
+        try {
+          currentSubs.push(skope.watch(element.getAttributeNode('s-for'), watchRun(skope, scopes, exp), val => {
+            unsubNested(nestedSubs);
+            items.forEach(item => {
+              item.remove();
+            });
+            items.clear();
+            var runs = [];
+
+            var repeat = (item, i) => {
+              var forSubs = [];
+              nestedSubs.push(forSubs);
+              var scope = {
+                $index: i
+              };
+              if (key) scope[key] = i;
+              if (value) scope[value] = item;
+              var elem = element.cloneNode(true);
+              elem.removeAttribute('s-for');
+              var processed = processHTML(skope, elem, forSubs, del);
+
+              _comment.before(processed.elem);
+
+              items.add(elem);
+              runs.push(() => processed.run(pushScope(skope, scopes, elem, forSubs, scope)));
             };
-            if (key) scope[key] = i;
-            if (value) scope[value] = item;
-            var elem = element.cloneNode(true);
-            elem.removeAttribute('s-for');
-            var processed = processHTML(skope, elem, forSubs, del);
 
-            _comment.before(processed.elem);
+            var i = -1;
 
-            items.add(elem);
-            runs.push(() => processed.run(pushScope(skope, scopes, elem, forSubs, scope)));
-          };
-
-          var i = -1;
-
-          if (isIterable(val)) {
-            for (var item of val) {
-              i++;
-              repeat(item, i);
+            if (isIterable(val)) {
+              for (var item of val) {
+                i++;
+                repeat(item, i);
+              }
+            } else if (isObject(val)) {
+              for (var _i in val) {
+                repeat(val[_i], _i);
+              }
             }
-          } else if (isObject(val)) {
-            for (var _i in val) {
-              repeat(val[_i], _i);
+
+            runs.forEach(run => run());
+          }, () => {
+            unsubNested(nestedSubs);
+            items.forEach(item => {
+              item.remove();
+            });
+            items.clear();
+          }));
+        } catch (err) {
+          createError(err.message, element.getAttributeNode('s-for'));
+        }
+      });
+      return;
+    }
+
+    if (element.hasAttribute('s-component')) {
+      ready(scopes => {
+        try {
+          currentSubs.push(runDirective(skope, {
+            element,
+            att: element.getAttributeNode('s-component'),
+            directive: 'component',
+            js: '',
+            original: element.outerHTML,
+            subs: currentSubs,
+            delegate
+          }, scopes));
+        } catch (err) {
+          createError(err.message, element);
+        }
+      });
+      return;
+    }
+
+    var elementScopeAdded = false;
+
+    var _loop2 = function _loop2(att) {
+      if (att.nodeName.startsWith("$")) {
+        var name = att.nodeName.substring(1).replace(/\-([\w\$])/g, (match, letter) => letter.toUpperCase());
+
+        if (!name.match(regVarName)) {
+          createError("Invalid variable name in attribute", att);
+          return "continue";
+        }
+
+        if (!elementScopeAdded) {
+          elementScopeAdded = true;
+          var _execSteps = [];
+          ready(s => {
+            var scopes = pushScope(skope, s, element, currentSubs);
+
+            for (var cb of _execSteps) {
+              cb(scopes);
             }
+          });
+
+          ready = cb => _execSteps.push(cb);
+        }
+
+        ready(scopes => {
+          skope.execAsync(getRootElement(skope, scopes), "let ".concat(name, " = ").concat(att.nodeValue), scopes).run().catch(createErrorCb(att));
+        });
+      }
+    };
+
+    for (var att of element.attributes) {
+      var _ret = _loop2(att);
+
+      if (_ret === "continue") continue;
+    }
+
+    if (element.hasAttribute('s-detached')) {
+      var nestedScopes;
+      var execSteps = [];
+      ready(scopes => {
+        nestedScopes = [getScope(skope, element, currentSubs, {}, true)];
+
+        if (elementScopeAdded) {
+          nestedScopes[0].$templates = _objectSpread2({}, scopes[scopes.length - 1].$templates || {});
+          delete scopes[scopes.length - 1].$templates;
+          nestedScopes.push(scopes[scopes.length - 1]);
+        }
+
+        for (var cb of execSteps) {
+          cb(nestedScopes);
+        }
+      });
+
+      ready = cb => execSteps.push(cb);
+    }
+
+    if (element instanceof HTMLStyleElement) {
+      var loaded = () => {
+        var parent = element.parentElement;
+        if (!parent) return false;
+
+        if (!skope.sanitizer.isAttributeForced(parent, 'skope-style')) {
+          parent.removeAttribute('skope-style');
+        }
+
+        var id = parent.getAttribute('skope-style') || ++skope.styleIds;
+        skope.sanitizer.setAttributeForced(parent, 'skope-style', id + "");
+        var i = element.sheet.cssRules.length - 1;
+
+        for (var rule of [...element.sheet.cssRules].reverse()) {
+          if (!(rule instanceof CSSStyleRule || rule instanceof CSSKeyframesRule)) {
+            element.sheet.deleteRule(i);
           }
 
-          runs.forEach(run => run());
-        }, () => {
-          unsubNested(nestedSubs);
-          items.forEach(item => {
-            item.remove();
-          });
-          items.clear();
-        }));
-      });
+          i--;
+        }
+
+        i = 0;
+
+        for (var _rule of [...element.sheet.cssRules]) {
+          if (_rule instanceof CSSStyleRule) {
+            var cssText = _rule.style.cssText;
+            element.sheet.deleteRule(i);
+            element.sheet.insertRule("[skope-style=\"".concat(id, "\"] :is(").concat(_rule.selectorText, ") { ").concat(cssText, " }"), i);
+          }
+
+          i++;
+        }
+      };
+
+      if (element.sheet && element.parentElement) {
+        loaded();
+      } else {
+        element.addEventListener('load', loaded);
+      }
+
       return;
     }
 
@@ -5399,55 +5663,11 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
       });
     }
 
-    if (element.hasAttribute('s-detached')) {
-      var nestedScopes;
-      ready(scopes => {
-        nestedScopes = [getScope(skope, element, currentSubs, {}, true)];
-      });
-      var prevReady = ready;
-
-      ready = cb => prevReady(() => cb(nestedScopes));
-    }
-
-    var elementScopeAdded = false;
-
-    var _loop2 = function _loop2(att) {
-      if (att.nodeName.startsWith("$")) {
-        var name = att.nodeName.substring(1).replace(/\-([\w\$])/g, (match, letter) => letter.toUpperCase());
-
-        if (!name.match(regVarName)) {
-          createError("Invalid variable name in attribute", att);
-          return "continue";
-        }
-
-        if (!elementScopeAdded) {
-          elementScopeAdded = true;
-          var _prevReady = ready;
-
-          ready = cb => {
-            _prevReady(s => {
-              cb(pushScope(skope, s, element, currentSubs));
-            });
-          };
-        }
-
-        ready(scopes => {
-          skope.execAsync(getRootElement(scopes), "let ".concat(name, " = ").concat(att.nodeValue), scopes).run().catch(createErrorCb(att));
-        });
-      }
-    };
-
-    for (var att of element.attributes) {
-      var _ret = _loop2(att);
-
-      if (_ret === "continue") continue;
-    }
-
     if (element instanceof HTMLScriptElement) {
       if (element.type === 'skopejs') {
         ready(scopes => {
           try {
-            skope.exec(getRootElement(scopes), element.innerHTML, scopes).run();
+            skope.exec(getRootElement(skope, scopes), element.innerHTML, scopes).run();
           } catch (err) {
             createError(err === null || err === void 0 ? void 0 : err.message, element);
           }
@@ -5466,35 +5686,40 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
 
           ready(scopes => {
             var $element = skope.wrapElem(element);
-            currentSubs.push(skope.watch(_att, watchRun(skope, scopes, _att.nodeValue), (val, lastVal) => {
-              if (typeof val === 'object' && ['style', 'class'].includes(_at2)) {
-                Object.entries(val).forEach(a => Promise.resolve(a[1]).then(v => {
-                  if (_at2 === 'class') {
-                    $element.toggleClass(a[0], !!v);
-                  } else {
-                    if (element instanceof HTMLElement || element instanceof SVGElement) {
-                      element.style[a[0]] = v;
+
+            try {
+              currentSubs.push(skope.watch(_att, watchRun(skope, scopes, _att.nodeValue), (val, lastVal) => {
+                if (typeof val === 'object' && ['style', 'class'].includes(_at2)) {
+                  Object.entries(val).forEach(a => Promise.resolve(a[1]).then(v => {
+                    if (_at2 === 'class') {
+                      $element.toggleClass(a[0], !!v);
+                    } else {
+                      if (element instanceof HTMLElement || element instanceof SVGElement) {
+                        element.style[a[0]] = v;
+                      }
                     }
-                  }
-                }, () => {
-                  if (_at2 === 'class') {
-                    $element.toggleClass(a[0], false);
-                  }
-                }));
-              } else {
-                if (parts.length === 2 && ['style', 'class'].includes(parts[0])) {
-                  if (parts[0] === 'class') {
-                    $element.toggleClass(parts[1], !!val);
-                  } else {
-                    if (element instanceof HTMLElement || element instanceof SVGElement) {
-                      element.style[parts[1]] = val;
+                  }, () => {
+                    if (_at2 === 'class') {
+                      $element.toggleClass(a[0], false);
                     }
-                  }
+                  }));
                 } else {
-                  $element.attr(_at2, val + "");
+                  if (parts.length === 2 && ['style', 'class'].includes(parts[0])) {
+                    if (parts[0] === 'class') {
+                      $element.toggleClass(parts[1], !!val);
+                    } else {
+                      if (element instanceof HTMLElement || element instanceof SVGElement) {
+                        element.style[parts[1]] = val;
+                      }
+                    }
+                  } else {
+                    $element.attr(_at2, val + "");
+                  }
                 }
-              }
-            }, () => {}));
+              }, () => {}));
+            } catch (err) {
+              createError(err.message, _att);
+            }
           });
         } else if (_att.nodeName.startsWith('@')) {
           var _transitionParts$;
@@ -5505,8 +5730,9 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
 
           var debouce = /^debounce(\((\d+)\))?$/.exec(_parts[1] || "");
           var throttle = /^throttle(\((\d+)\))?$/.exec(_parts[1] || "");
+          var queue = /^queue(\((\d+)\))?$/.exec(_parts[1] || "");
 
-          if (_parts[1] && !(debouce || throttle || _parts[1] === 'once')) {
+          if (_parts[1] && !(debouce || throttle || queue || _parts[1] === 'once')) {
             createError('Invalid event directive: ' + _parts[1], _att);
             return "continue";
           }
@@ -5521,16 +5747,20 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
           }
 
           ready(scopes => {
+            if (transitionVar) {
+              skope.exec(getRootElement(skope, scopes), "if (typeof ".concat(transitionVar, " === 'undefined') var ").concat(transitionVar), scopes).run();
+            }
+
             var trans;
 
             var evCb = e => {
-              trans = skope.execAsync(getRootElement(scopes), _att.nodeValue, pushScope(skope, scopes, element, currentSubs, {
+              trans = skope.execAsync(getRootElement(skope, scopes), _att.nodeValue, pushScope(skope, scopes, element, currentSubs, {
                 $event: e
               })).run();
               trans.catch(() => {});
 
               if (transitionVar) {
-                skope.exec(getRootElement(scopes), "".concat(transitionVar, " = trans"), pushScope(skope, scopes, element, currentSubs, {
+                skope.exec(getRootElement(skope, scopes), "".concat(transitionVar, " = trans"), pushScope(skope, scopes, element, currentSubs, {
                   trans
                 })).run();
               }
@@ -5551,21 +5781,44 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
             }
 
             if (throttle) {
-              var _timer2 = null;
-              var eobj;
+              if (throttle[2] === undefined) {
+                var _ready = false;
 
-              ev = e => {
-                eobj = e;
-                if (_timer2 !== null) return;
-                _timer2 = setTimeout(() => {
-                  _timer2 = null;
-                  evCb(eobj);
-                }, Number(throttle[2] || 250));
-              };
+                ev = e => {
+                  if (_ready || !trans) {
+                    _ready = false;
+                    evCb(e);
+                    trans.then(() => _ready = true, () => _ready = true);
+                  }
+                };
+              } else {
+                var eobj;
+                var _timer2 = null;
+
+                ev = e => {
+                  eobj = e;
+                  if (_timer2 !== null) return;
+                  _timer2 = setTimeout(() => {
+                    _timer2 = null;
+                    evCb(eobj);
+                  }, Number(throttle[2]));
+                };
+              }
             }
 
-            if (transitionVar) {
-              skope.exec(getRootElement(scopes), "if (typeof ".concat(transitionVar, " === 'undefined') var ").concat(transitionVar), scopes).run();
+            if (queue) {
+              var count = 0;
+              var q = Promise.resolve();
+
+              ev = e => {
+                if (!queue[2] || Number(queue[2]) > count) {
+                  count++;
+                  q = q.then(() => {
+                    evCb(e);
+                    return trans;
+                  }).catch(() => {}).then(() => count--);
+                }
+              };
             }
 
             if (_parts[1] === 'once') {
@@ -5575,17 +5828,21 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
             }
           });
         } else if (_att.nodeName.startsWith('s-')) {
-          ready(scopes => {
-            currentSubs.push(runDirective(skope, {
-              element,
-              att: _att,
-              directive: _att.nodeName.slice(2),
-              js: _att.nodeValue,
-              original: element.outerHTML,
-              subs: currentSubs,
-              delegate
-            }, pushScope(skope, scopes, element, currentSubs)));
-          });
+          try {
+            ready(scopes => {
+              currentSubs.push(runDirective(skope, {
+                element,
+                att: _att,
+                directive: _att.nodeName.slice(2),
+                js: _att.nodeValue,
+                original: element.outerHTML,
+                subs: currentSubs,
+                delegate
+              }, pushScope(skope, scopes, element, currentSubs)));
+            });
+          } catch (err) {
+            createError(err.message, _att);
+          }
         }
       };
 
@@ -5609,6 +5866,7 @@ class Skope {
     this.globals = Sandbox.SAFE_GLOBALS;
     this.prototypeWhitelist = Sandbox.SAFE_PROTOTYPES;
     this.sandboxCache = new WeakMap();
+    this.styleIds = 0;
     this.sanitizer = (options === null || options === void 0 ? void 0 : options.sanitizer) || new HTMLSanitizer();
     delete this.globals.Function;
     delete this.globals.eval;
@@ -5810,6 +6068,7 @@ class Skope {
     var sub = this.sanitizer.observeAttribute(elem || document.documentElement, 'skope', el => {
       var comp = component || el.getAttribute('skope');
       var scope = getScope(this, el, subs, this.components[comp] || {}, true);
+      registerTemplates(this, el, [scope]);
       var processed = processHTML(this, el, subs, this.defaultDelegateObject);
       this.sanitizer.setAttributeForced(el, 'skope-processed', '');
       processed.run([scope]);

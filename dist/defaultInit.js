@@ -5,7 +5,7 @@
     var regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
     var regSystemAtt = /^(:|@|\$|s\-)/;
     var defaultHTMLWhiteList = [HTMLBRElement, HTMLBodyElement, HTMLDListElement, HTMLDataElement, HTMLDataListElement, HTMLDivElement, HTMLFieldSetElement, HTMLFormElement, HTMLHRElement, HTMLHeadingElement, HTMLLIElement, HTMLLegendElement, HTMLMapElement, HTMLMetaElement, HTMLMeterElement, HTMLModElement, HTMLOListElement, HTMLOutputElement, HTMLParagraphElement, HTMLPreElement, HTMLProgressElement, HTMLQuoteElement, HTMLSpanElement, HTMLTableCaptionElement, HTMLTableCellElement, HTMLTableColElement, HTMLTableElement, HTMLTableSectionElement, HTMLTableRowElement, HTMLTimeElement, HTMLTitleElement, HTMLUListElement, HTMLUnknownElement, HTMLTemplateElement, HTMLCanvasElement, HTMLElement];
-    var globalAllowedAtttributes = new Set(['id', 'class', 'style', 'alt', 'role', 'aria-label', 'aria-labelledby', 'aria-hidden', 'tabindex', 'title', 'dir', 'lang', 'height', 'width']);
+    var globalAllowedAtttributes = new Set(['id', 'class', 'style', 'alt', 'role', 'aria-label', 'aria-labelledby', 'aria-hidden', 'tabindex', 'title', 'dir', 'lang', 'height', 'width', 'slot']);
     function sanitizeType(obj, t, allowedAttributes, element) {
       var s = new Set(allowedAttributes);
 
@@ -16,7 +16,6 @@
         });
       }
     }
-    var styleIds = 0;
     var reservedAtrributes = new WeakMap();
     class HTMLSanitizer {
       constructor() {
@@ -55,51 +54,8 @@
           this.setAttributeForced(el, 'skope-iframe-content', el.innerHTML);
           return !el.src && !el.srcdoc;
         });
-        var processedStyles = new WeakSet();
         sanitizeType(this, [HTMLStyleElement], [], (el, staticHtml) => {
           if (staticHtml) return false;
-
-          var loaded = () => {
-            var parent = el.parentElement;
-            if (!parent) return false;
-            if (processedStyles.has(el)) return true;
-            processedStyles.add(el);
-
-            if (!this.isAttributeForced(parent, 'skope-style')) {
-              parent.removeAttribute('skope-style');
-            }
-
-            var id = parent.getAttribute('skope-style') || ++styleIds;
-            this.setAttributeForced(parent, 'skope-style', id + "");
-            var i = el.sheet.cssRules.length - 1;
-
-            for (var rule of [...el.sheet.cssRules].reverse()) {
-              if (!(rule instanceof CSSStyleRule || rule instanceof CSSKeyframesRule)) {
-                el.sheet.deleteRule(i);
-              }
-
-              i--;
-            }
-
-            i = 0;
-
-            for (var _rule of [...el.sheet.cssRules]) {
-              if (_rule instanceof CSSStyleRule) {
-                var cssText = _rule.style.cssText;
-                el.sheet.deleteRule(i);
-                el.sheet.insertRule("[skope-style=\"".concat(id, "\"] :is(").concat(_rule.selectorText, ") { ").concat(cssText, " }"), i);
-              }
-
-              i++;
-            }
-          };
-
-          if (el.sheet && el.parentElement) {
-            loaded();
-          } else {
-            el.addEventListener('load', loaded);
-          }
-
           return true;
         });
         sanitizeType(this, [HTMLPictureElement, HTMLImageElement, HTMLAudioElement, HTMLTrackElement, HTMLVideoElement, HTMLSourceElement], ['src', 'srcset', 'sizes', 'poster', 'autoplay', 'contorls', 'muted', 'loop', 'volume', 'loading'], el => {
@@ -109,6 +65,7 @@
 
       santizeAttribute(element, attName, attValue) {
         var preprocess = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
+        var remove = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : false;
         var allowed = this.types.get(element.constructor);
         if (!allowed) return false;
         attName = attName.toLowerCase();
@@ -137,12 +94,20 @@
           } else if (!attValue.match(regValidSrc)) {
             return false;
           }
+        } else if (!preprocess && element instanceof HTMLScriptElement) {
+          return false;
         } else if (!allowed.attributes.has(attName) && !globalAllowedAtttributes.has(attName)) {
           return false;
         } else if (element instanceof HTMLInputElement && attName == 'type') {
           return this.allowedInputs.has(attValue);
         } else if (element instanceof HTMLButtonElement && attName == 'type') {
           return attValue === 'reset' || attValue === 'button';
+        } else if (remove && this.isAttributeForced(element, attName)) {
+          return false;
+        }
+
+        if (attName === 'slot') {
+          element.innerHTML = '';
         }
 
         return true;
@@ -172,7 +137,9 @@
         }
 
         if (element.children) {
-          for (var el of [...element.children]) {
+          var children = element instanceof HTMLTemplateElement ? element.content.children : element.children;
+
+          for (var el of [...children]) {
             this.sanitizeHTML(el, staticHtml);
           }
         }

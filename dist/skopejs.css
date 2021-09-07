@@ -1,3 +1,7 @@
 [s-cloak], .s-hide {
   display: none;
 }
+
+.eq-ally-click {
+  cursor: pointer;
+}
