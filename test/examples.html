@@ -6,6 +6,11 @@
   <meta charset="UTF-8">
 </head>
 <body skope s-cloak $my-var="'Hello World'">
+  <style>
+    button {
+      cursor: pointer;
+    }
+  </style>
   {{myVar}}
 
   <div $var1="'Hello'" $var2="'World'">
@@ -71,6 +76,8 @@
   </div>
   
   <div> <span s-for="i in [1,2,3]"> {{i}} </span> </div>
+  
+  <div> <span s-for="(key, value) in {a: 1, b: 2, c: 3}"> {{key}}: {{value}} </span> </div>
 
   <div $var1="false">
     <button @click="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>

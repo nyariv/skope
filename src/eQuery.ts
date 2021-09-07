@@ -533,7 +533,11 @@ export default function createClass(sanitizer: () => HTMLSanitizer): {
      */
     removeAttr(key: string) {
       this.forEach((elem) => {
-        elem.removeAttribute(key);
+        if (sanitizer().santizeAttribute(elem, key, "", false, true)) {
+          elem.removeAttribute(key);
+        } else {
+          throw new Error("Not allowed to remove attribute [" + key + "] value for <" + elem.nodeName.toLowerCase() + ">");
+        }
       });
       return this;
     }

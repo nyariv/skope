@@ -159,7 +159,7 @@ The `slot` attribute can be used as a placeholder for inner html of the componen
 This attribute is removed when the html is processed by skope. In the default stylesheet it is treated as `display: none`.
 
 ```html
-  <div s-clock>
+  <div s-cloak>
     {{'this is hidden while app is loading'}}
   </div>
 ```
@@ -167,7 +167,11 @@ This attribute is removed when the html is processed by skope. In the default st
 ### s-for
 
 ```html
-  <div> <span s-for="i in [1,2,3]"> {{i}} </span> </div
+  <div> <span s-for="i in [1,2,3]"> {{i}} </span> </div>
+```
+
+```html
+  <div> <span s-for="(key, value) in {a: 1, b: 2, c: 3"> {{key}}: {{value}} </span> </div>
 ```
 
 ### s-if

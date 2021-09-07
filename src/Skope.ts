@@ -594,16 +594,21 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
         let found = false;
         strings.forEach((s) => {
           if (s.startsWith("{{") && s.endsWith("}}")) {
+            skope.getStore<subs>(el, 'currentSubs', currentSubs);
             found = true;
             const placeholder = document.createTextNode("");
             ready((scopes) => {
-              currentSubs.push(skope.watch(element, watchRun(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
-                placeholder.textContent = val + "";
-              }, (err: Error) => {() => {
-                placeholder.textContent = "";
+              try {
+                currentSubs.push(skope.watch(element, watchRun(skope, scopes, s.slice(2, -2)), (val, lastVal) => {
+                  placeholder.textContent = val + "";
+                }, (err: Error) => {() => {
+                  placeholder.textContent = "";
+                }
+                }));
+                return scopes;
+              } catch (err) {
+                createError(err.message, element);
               }
-              }));
-              return scopes;
             });
             nodes.push(placeholder);
           } else {
@@ -644,29 +649,33 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
         skope.getStore<subs>(comment, 'currentSubs', currentSubs);
         const nestedSubs: subs = [];
         currentSubs.push(nestedSubs)
-        currentSubs.push(skope.watch(element.getAttributeNode('s-if'), watchRun(skope, scopes, at), (val, lastVal) => {
-          if (val) {
-            if (!ifElem) {
-              ifElem = element.cloneNode(true) as Element;
-              ifElem.removeAttribute('s-if');
-              const processed = processHTML(skope, ifElem, nestedSubs, delegate);
-              comment.after(processed.elem);
-              processed.run(pushScope(skope, scopes, ifElem, nestedSubs));
+        try {
+          currentSubs.push(skope.watch(element.getAttributeNode('s-if'), watchRun(skope, scopes, at), (val, lastVal) => {
+            if (val) {
+              if (!ifElem) {
+                ifElem = element.cloneNode(true) as Element;
+                ifElem.removeAttribute('s-if');
+                const processed = processHTML(skope, ifElem, nestedSubs, delegate);
+                comment.after(processed.elem);
+                processed.run(pushScope(skope, scopes, ifElem, nestedSubs));
+              }
+            } else {
+              if (ifElem) {
+                ifElem.remove();
+                ifElem = undefined;
+                unsubNested(nestedSubs);
+              }
             }
-          } else {
+          }, (err: Error) => {
             if (ifElem) {
               ifElem.remove();
               ifElem = undefined;
               unsubNested(nestedSubs);
             }
-          }
-        }, (err: Error) => {
-          if (ifElem) {
-            ifElem.remove();
-            ifElem = undefined;
-            unsubNested(nestedSubs);
-          }
-        }));
+          }));
+        } catch (err) {
+          createError(err.message,  element.getAttributeNode('s-if'));
+        }
       });
       return;
     }
@@ -701,61 +710,51 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
         currentSubs.push(del.off);
         const nestedSubs: subs = [];
         currentSubs.push(nestedSubs);
-        currentSubs.push(skope.watch(element.getAttributeNode('s-for'), watchRun(skope, scopes, exp), (val) => {
-          unsubNested(nestedSubs);
-          items.forEach((item) => {
-            item.remove(); // @TODO: optimize
-          });
-          items.clear();
-          const runs: (() => void)[] = [];
-          const repeat = (item: unknown, i: number|string) => {
-            const forSubs: subs = [];
-            nestedSubs.push(forSubs);
-            const scope: any = {$index: i};
-            if (key) scope[key] = i;
-            if (value) scope[value] = item;
-            const elem = element.cloneNode(true) as Element;
-            elem.removeAttribute('s-for');
-            const processed = processHTML(skope, elem, forSubs, del);
-            comment.before(processed.elem);
-            items.add(elem);
-            runs.push(() => processed.run(pushScope(skope, scopes, elem, forSubs, scope)));
-          }
-          let i = -1;
-          if (isIterable(val)) {
-            for (let item of val) {
-              i++;
-              repeat(item, i);
+        try {
+          currentSubs.push(skope.watch(element.getAttributeNode('s-for'), watchRun(skope, scopes, exp), (val) => {
+            unsubNested(nestedSubs);
+            items.forEach((item) => {
+              item.remove(); // @TODO: optimize
+            });
+            items.clear();
+            const runs: (() => void)[] = [];
+            const repeat = (item: unknown, i: number|string) => {
+              const forSubs: subs = [];
+              nestedSubs.push(forSubs);
+              const scope: any = {$index: i};
+              if (key) scope[key] = i;
+              if (value) scope[value] = item;
+              const elem = element.cloneNode(true) as Element;
+              elem.removeAttribute('s-for');
+              const processed = processHTML(skope, elem, forSubs, del);
+              comment.before(processed.elem);
+              items.add(elem);
+              runs.push(() => processed.run(pushScope(skope, scopes, elem, forSubs, scope)));
             }
-          } else if (isObject(val)) {
-            for (let i in val) {
-              repeat(val[i], i);
+            let i = -1;
+            if (isIterable(val)) {
+              for (let item of val) {
+                i++;
+                repeat(item, i);
+              }
+            } else if (isObject(val)) {
+              for (let i in val) {
+                repeat(val[i], i);
+              }
             }
-          }
-          runs.forEach((run) => run());
-        }, () => {
-          unsubNested(nestedSubs);
-          items.forEach((item) => {
-            item.remove(); // @TODO: optimize
-          });
-          items.clear();
-        }));
+            runs.forEach((run) => run());
+          }, () => {
+            unsubNested(nestedSubs);
+            items.forEach((item) => {
+              item.remove(); // @TODO: optimize
+            });
+            items.clear();
+          }));
+        } catch (err) {
+          createError(err.message, element.getAttributeNode('s-for'))
+        }
       });
       return;
-    }
-    if (element instanceof HTMLIFrameElement && element.hasAttribute('skope-iframe-content')) {
-      ready(() => {
-        const exec = () => {
-          //@ts-ignore
-          skope.wrapElem(element).html(element.getAttribute('skope-iframe-content'));
-          element.removeAttribute('skope-iframe-content');
-        }
-        if (element.contentDocument.readyState !== 'complete') {
-          element.addEventListener('load', exec);
-        } else {
-          exec();
-        }
-      });
     }
     if (element.hasAttribute('s-component')) {
       ready((scopes) => {
@@ -785,17 +784,82 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
         };
         if (!elementScopeAdded) {
           elementScopeAdded = true;
-          const prevReady = ready;
-          ready = (cb: (scopes: IElementScope[]) => void) => {
-            prevReady((s: IElementScope[]) => {
-              cb(pushScope(skope, s, element, currentSubs));
-            });
-          };
+          const execSteps: ((scopes: IElementScope[]) => void)[] = [];
+          ready((s: IElementScope[]) => {
+            let scopes = pushScope(skope, s, element, currentSubs);
+            for (let cb of execSteps) {
+              cb(scopes);
+            }
+          });
+          ready = (cb: (scopes: IElementScope[]) => void) => execSteps.push(cb);
         }
         ready(scopes => {
           skope.execAsync(getRootElement(skope, scopes), `let ${name} = ${att.nodeValue}`, scopes).run().catch(createErrorCb(att));
         });
       }
+    }
+    if (element.hasAttribute('s-detached')) {
+      let nestedScopes: [IRootScope, IElementScope?];
+      const execSteps: ((scopes: IElementScope[]) => void)[] = [];
+      ready((scopes) => {
+        nestedScopes = [getScope(skope, element, currentSubs, {}, true) as IRootScope];
+        if (elementScopeAdded) {
+          nestedScopes[0].$templates = {...(scopes[scopes.length - 1] as any).$templates || {}};
+          delete (scopes[scopes.length - 1] as any).$templates;
+          nestedScopes.push(scopes[scopes.length - 1]);
+        }
+        for (let cb of execSteps) {
+          cb(nestedScopes);
+        }
+      });
+      ready = (cb: (scopes: IElementScope[]) => void) => execSteps.push(cb);
+    }
+    if (element instanceof HTMLStyleElement) {
+      const loaded = () => {
+        const parent = element.parentElement;
+        if (!parent) return false;
+        if (!skope.sanitizer.isAttributeForced(parent, 'skope-style')) {
+          parent.removeAttribute('skope-style');
+        }
+        const id = parent.getAttribute('skope-style') || ++skope.styleIds;
+        skope.sanitizer.setAttributeForced(parent, 'skope-style', id + "");
+        let i = element.sheet.cssRules.length - 1;
+        for (let rule of [...element.sheet.cssRules].reverse()) {
+          if (!(rule instanceof CSSStyleRule || rule instanceof CSSKeyframesRule)) {
+            element.sheet.deleteRule(i);
+          }
+          i--;
+        }
+        i = 0;
+        for (let rule of [...element.sheet.cssRules]) {
+          if (rule instanceof CSSStyleRule) {
+            var cssText = rule.style.cssText;
+            element.sheet.deleteRule(i);
+            element.sheet.insertRule(`[skope-style="${id}"] :is(${rule.selectorText}) { ${cssText} }`, i);
+          }
+          i++;
+        }
+      }
+      if (element.sheet && element.parentElement) {
+        loaded();
+      } else {
+        element.addEventListener('load', loaded);
+      }
+      return;
+    }
+    if (element instanceof HTMLIFrameElement && element.hasAttribute('skope-iframe-content')) {
+      ready(() => {
+        const exec = () => {
+          //@ts-ignore
+          skope.wrapElem(element).html(element.getAttribute('skope-iframe-content'));
+          element.removeAttribute('skope-iframe-content');
+        }
+        if (element.contentDocument.readyState !== 'complete') {
+          element.addEventListener('load', exec);
+        } else {
+          exec();
+        }
+      });
     }
     if (element instanceof HTMLScriptElement) {
       if (element.type === 'skopejs') {
@@ -817,35 +881,39 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
           const parts = at.split('.');
           ready((scopes) => {
             const $element = skope.wrapElem(element);
-            currentSubs.push(skope.watch(att, watchRun(skope, scopes, att.nodeValue), (val: any, lastVal) => {
-              if (typeof val === 'object' && ['style', 'class'].includes(at)) {
-                Object.entries(val).forEach((a) => Promise.resolve(a[1]).then((v) => {
-                  if (at === 'class') {
-                      $element.toggleClass(a[0], !!v);
-                  } else {
-                    if (element instanceof HTMLElement || element instanceof SVGElement) {
-                      (<any>element.style)[a[0]] = v;
+            try {
+              currentSubs.push(skope.watch(att, watchRun(skope, scopes, att.nodeValue), (val: any, lastVal) => {
+                if (typeof val === 'object' && ['style', 'class'].includes(at)) {
+                  Object.entries(val).forEach((a) => Promise.resolve(a[1]).then((v) => {
+                    if (at === 'class') {
+                        $element.toggleClass(a[0], !!v);
+                    } else {
+                      if (element instanceof HTMLElement || element instanceof SVGElement) {
+                        (<any>element.style)[a[0]] = v;
+                      }
                     }
-                  }
-                }, () => {
-                  if (at === 'class') {
-                    $element.toggleClass(a[0], false);
-                  }
-                }));
-              } else {
-                if (parts.length === 2 && ['style', 'class'].includes(parts[0])) {
-                  if (parts[0] === 'class') {
-                      $element.toggleClass(parts[1], !!val);
-                  } else {
-                    if (element instanceof HTMLElement || element instanceof SVGElement) {
-                      (<any>element.style)[parts[1]] = val;
+                  }, () => {
+                    if (at === 'class') {
+                      $element.toggleClass(a[0], false);
                     }
-                  }
+                  }));
                 } else {
-                  $element.attr(at, val + "");
+                  if (parts.length === 2 && ['style', 'class'].includes(parts[0])) {
+                    if (parts[0] === 'class') {
+                        $element.toggleClass(parts[1], !!val);
+                    } else {
+                      if (element instanceof HTMLElement || element instanceof SVGElement) {
+                        (<any>element.style)[parts[1]] = val;
+                      }
+                    }
+                  } else {
+                    $element.attr(at, val + "");
+                  }
                 }
-              }
-            }, () => {}));
+              }, () => {}));
+            } catch (err) {
+              createError(err.message, att)
+            }
           });
         } else if (att.nodeName.startsWith('@')) {
           const transitionParts = att.nodeName.split('$');
@@ -931,17 +999,21 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
             }
           });
         } else if (att.nodeName.startsWith('s-')) {
-          ready((scopes) => {
-            currentSubs.push(runDirective(skope, {
-              element,
-              att,
-              directive: att.nodeName.slice(2),
-              js: att.nodeValue,
-              original: element.outerHTML,
-              subs: currentSubs,
-              delegate
-            }, pushScope(skope, scopes, element, currentSubs)));
-          });
+          try {
+            ready((scopes) => {
+              currentSubs.push(runDirective(skope, {
+                element,
+                att,
+                directive: att.nodeName.slice(2),
+                js: att.nodeValue,
+                original: element.outerHTML,
+                subs: currentSubs,
+                delegate
+              }, pushScope(skope, scopes, element, currentSubs)));
+            });
+          } catch (err) {
+            createError(err.message, att);
+          }
         }
       }
     }
@@ -974,6 +1046,7 @@ export default class Skope {
   deleteStore: (elem: Element, store: string) => boolean;
   RootScope: new (el: Element) => IRootScope;
   ElementScope: new (el: Element) => IElementScope;
+  styleIds = 0;
 
   constructor(options?: {sanitizer?: HTMLSanitizer, executionQuote?: bigint, allowRegExp?: boolean}) {
     this.sanitizer = options?.sanitizer || new HTMLSanitizer();

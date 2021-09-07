@@ -70,7 +70,6 @@ export function sanitizeType(obj: HTMLSanitizer, t: (new () => Element)[], allow
 }
 
 
-let styleIds = 0;
 const reservedAtrributes: WeakMap<Element, Set<string>> = new WeakMap();
 
 export default class HTMLSanitizer {
@@ -159,43 +158,11 @@ export default class HTMLSanitizer {
       return !el.src && !el.srcdoc;
     });
 
-    const processedStyles: WeakSet<HTMLStyleElement> = new WeakSet();
     sanitizeType(this, [HTMLStyleElement], [], (el: HTMLStyleElement, staticHtml) => {
       if (staticHtml) return false;
-      const loaded = () => {
-        const parent = el.parentElement;
-        if (!parent) return false;
-        if (processedStyles.has(el)) return true;
-        processedStyles.add(el);
-        if (!this.isAttributeForced(parent, 'skope-style')) {
-          parent.removeAttribute('skope-style');
-        }
-        const id = parent.getAttribute('skope-style') || ++styleIds;
-        this.setAttributeForced(parent, 'skope-style', id + "");
-        let i = el.sheet.cssRules.length - 1;
-        for (let rule of [...el.sheet.cssRules].reverse()) {
-          if (!(rule instanceof CSSStyleRule || rule instanceof CSSKeyframesRule)) {
-            el.sheet.deleteRule(i);
-          }
-          i--;
-        }
-        i = 0;
-        for (let rule of [...el.sheet.cssRules]) {
-          if (rule instanceof CSSStyleRule) {
-            var cssText = rule.style.cssText;
-            el.sheet.deleteRule(i);
-            el.sheet.insertRule(`[skope-style="${id}"] :is(${rule.selectorText}) { ${cssText} }`, i);
-          }
-          i++;
-        }
-      }
-      if (el.sheet && el.parentElement) {
-        loaded();
-      } else {
-        el.addEventListener('load', loaded);
-      }
       return true; 
     });
+
     sanitizeType(this, [HTMLPictureElement, 
                   HTMLImageElement, 
                   HTMLAudioElement,
@@ -214,7 +181,7 @@ export default class HTMLSanitizer {
                   'loading'], (el: Element) => { return true; });
   }
 
-  santizeAttribute(element: Element, attName: string, attValue: string, preprocess = false): boolean {
+  santizeAttribute(element: Element, attName: string, attValue: string, preprocess = false, remove = false): boolean {
     const allowed = this.types.get(element.constructor as new () => Element);
     if (!allowed) return false;
     attName = attName.toLowerCase();
@@ -239,12 +206,19 @@ export default class HTMLSanitizer {
       } else if (!attValue.match(regValidSrc)) {
         return false;
       }
+    } else if (!preprocess && element instanceof HTMLScriptElement) {
+      return false;
     } else if (!allowed.attributes.has(attName) && !globalAllowedAtttributes.has(attName)) {
       return false;
     } else if (element instanceof HTMLInputElement && attName == 'type') {
       return this.allowedInputs.has(attValue);
     } else if (element instanceof HTMLButtonElement && attName == 'type') {
       return attValue === 'reset' || attValue === 'button';
+    } else if (remove && this.isAttributeForced(element, attName)) {
+      return false;
+    }
+    if (attName === 'slot') {
+      element.innerHTML = '';
     }
     return true;
   }
