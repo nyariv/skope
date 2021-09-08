@@ -62,7 +62,7 @@
 
   <div $counter="0">
 
-    <div s-component="test" $name="'Earth'">Thank you {{counter}}</div>
+    <div s-component="test" $name="'Earth'">Outer count {{counter}}</div>
 
     <template id="test" $name="'World'" $counter="0">
       <button @click="++counter">Hello {{name}}: {{counter}}</button>
@@ -77,7 +77,7 @@
   
   <div> <span s-for="i in [1,2,3]"> {{i}} </span> </div>
   
-  <div> <span s-for="(key, value) in {a: 1, b: 2, c: 3}"> {{key}}: {{value}} </span> </div>
+  <div s-for="(k, v) in {c: 1, b: 2, a: 3}"> {{k}}: {{v}} </div>
 
   <div $var1="false">
     <button @click="var1 = !var1">{{var1 ? 'On' : 'Off'}}</button>
@@ -89,9 +89,6 @@
     <div s-show="var1"> Hello World </div>
   </div>
 
-  <div $var1="'none'">
-    <button  @click$var1="await $delay(500); return Math.random()">Event value: {{var1}}</button>
-  </div>
   <div class="loader"></div>
   <div $var1 $var2>
     <style>

@@ -155,6 +155,7 @@ export default class HTMLSanitizer {
 
     sanitizeType(this, [HTMLIFrameElement], [], (el: HTMLIFrameElement) => {
       this.setAttributeForced(el, 'skope-iframe-content', el.innerHTML);
+      el.innerHTML = '';
       return !el.src && !el.srcdoc;
     });
 
@@ -216,9 +217,6 @@ export default class HTMLSanitizer {
       return attValue === 'reset' || attValue === 'button';
     } else if (remove && this.isAttributeForced(element, attName)) {
       return false;
-    }
-    if (attName === 'slot') {
-      element.innerHTML = '';
     }
     return true;
   }

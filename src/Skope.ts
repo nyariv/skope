@@ -217,7 +217,7 @@ function initialize (skope: Skope) {
       prev.contentDocument.head.appendChild(sty);
       prev.contentDocument.body.replaceWith(elem);
       const recurse = (el: Element): string[] => {
-        if (!el || !el.parentElement || el.matches('[skope]')) return [];
+        if (!el || !el.parentElement || el.matches('[skope]') || el.hasAttribute('s-detached')) return [];
         const styles = recurse(el.parentElement);
         styles.push(...skope.wrapElem(el.parentElement).children('style').map((el) => el.innerHTML));
         return styles;
@@ -242,8 +242,10 @@ function initialize (skope: Skope) {
       registerTemplates(skope, contentElem, scopes);
     }
     elem.appendChild(contentElem);
-    const processed = processHTML(skope, elem, currentSubs, defaultDelegateObject, true);
-    processed.run(scopes);
+    if (!elem.matches('[s-static], [s-static] *')) {
+      const processed = processHTML(skope, elem, currentSubs, defaultDelegateObject, true);
+      processed.run(scopes);
+    }
     return this;
   };
   ElementCollection.prototype.text = function (set?: string) {
@@ -304,9 +306,9 @@ function initialize (skope: Skope) {
     }];
   });
 
-  const div = document.createElement('div');
-  div.innerHTML = '<span $$templates="$templates"><span>';
-  const $$templatesAttr = div.querySelector('span').attributes.item(0);
+  const ddd = document.createElement('div');
+  ddd.innerHTML = '<span $$templates="$templates"><span>';
+  const $$templatesAttr = ddd.querySelector('span').attributes.item(0);
 
   skope.defineDirective('component', (exec: DirectiveExec, scopes: IElementScope[]) => {
     const template = getRootScope(skope, scopes)?.$templates[exec.att.nodeValue];
@@ -316,6 +318,14 @@ function initialize (skope: Skope) {
     }
 
     const elem = exec.element;
+    const $elem = skope.wrapElem(elem);
+    const subs: subs = [];
+    const delegate = $elem.delegate();
+
+    const isStatic = elem.hasAttribute('s-static');
+    elem.removeAttribute('s-static');
+    const templateContent = template.content.cloneNode(true) as DocumentFragment;
+    const slot = templateContent.querySelector('[slot]');
 
     for (let attribute of template.attributes) {
       const name = attribute.nodeName.toLowerCase();
@@ -324,29 +334,63 @@ function initialize (skope: Skope) {
       elem.setAttributeNode(attribute.cloneNode(true) as Attr);
     }
     elem.setAttributeNode($$templatesAttr.cloneNode(true) as Attr);
-    const slotContent = document.createDocumentFragment();
-    slotContent.append(...elem.childNodes);
-    elem.appendChild(template.content.cloneNode(true));
-    const slot = elem.querySelector('[slot]');
-    const detached = elem.hasAttribute('s-detached');
 
-    const subs: subs = [];
-    const delegate = skope.wrapElem(elem).delegate();
+    if (slot) {
+      slot.innerHTML = '';
+      if (elem.hasAttribute('s-detached')) {
+        slot.setAttribute('s-detached', elem.getAttribute('s-detached'));
+      }
+      if (elem.hasAttribute('s-html')) {
+        slot.setAttribute('s-html', elem.getAttribute('s-html'));
+      }
+      if (elem.hasAttribute('s-text')) {
+        slot.setAttribute('s-text', elem.getAttribute('s-text'));
+      }
+    }
+    elem.removeAttribute('s-html');
+    elem.removeAttribute('s-text');
+    const slotContent = document.createElement('template');
+
+    const isIframe = elem instanceof HTMLIFrameElement;
+    if (isIframe) {
+      if (slot) {
+        slotContent.innerHTML = elem.getAttribute('skope-iframe-content');
+      }
+      elem.removeAttribute('skope-iframe-content');
+    } else {
+      slotContent.content.append(...elem.childNodes);
+      elem.appendChild(templateContent);
+    }
+
     elem.removeAttribute('s-component');
     elem.setAttribute('s-detached', '');
-    const run = processHTML(skope, elem, subs, delegate);
+    processHTML(skope, elem, subs, delegate).run(pushScope(skope, scopes, elem, subs));
+    if (isIframe) {
+      //@ts-ignore
+      $elem.html(templateContent);
+    }
     elem.removeAttribute('s-detached');
     elem.setAttribute('s-component', exec.att.nodeValue);
     elem.setAttribute('component-processed', '');
-    run.run(pushScope(skope, scopes, elem, subs));
 
     if (slot) {
-      slot.appendChild(slotContent);
-      if (detached) {
-        slot.setAttribute('s-detached', '');
+      getStore<IElementScope[]>(slot, 'scopes', scopes);
+      if (isIframe) {
+        if (isStatic) {
+          slot.setAttribute('s-static', '');
+        }
+        preprocessHTML(skope, slot, slotContent.content);
+        slot.appendChild(slotContent.content);
+      } else {
+        slot.appendChild(slotContent.content);
+        /** @todo handle mutation observer race condition */
+        setTimeout(() => {
+          if (isStatic) {
+            slot.setAttribute('s-static', '');
+          }
+          processHTML(skope, slot, subs, exec.delegate).run(scopes);
+        });
       }
-      const run2 = processHTML(skope, slot, subs, exec.delegate);
-      run2.run(scopes);
     }
     return subs;
   });
@@ -460,6 +504,9 @@ function getScopes(skope: Skope, element: Element, subs: subs = [], newScope?: {
   if (!element) return [];
   const scope = newScope === undefined ? skope.getStore<IElementScope>(element, 'scope') : getScope(skope, element, subs, newScope);
   const scopes: IElementScope[] = skope.getStore<IElementScope[]>(element, 'scopes') || [];
+  if (scopes.length) {
+    return [...scopes, scope];
+  }
   if (scope) scopes.push(scope);
   return [...(element.hasAttribute('s-detached') ? [] : getScopes(skope, element.parentElement)), ...scopes];
 }
@@ -634,6 +681,39 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
   }
   if (element instanceof Element) {
     if (element instanceof HTMLTemplateElement) {
+      return;
+    }
+    if (element instanceof HTMLStyleElement) {
+      const loaded = () => {
+        const parent = element.parentElement;
+        if (!parent) return false;
+        if (!skope.sanitizer.isAttributeForced(parent, 'skope-style')) {
+          parent.removeAttribute('skope-style');
+        }
+        const id = parent.getAttribute('skope-style') || ++skope.styleIds;
+        skope.sanitizer.setAttributeForced(parent, 'skope-style', id + "");
+        let i = element.sheet.cssRules.length - 1;
+        for (let rule of [...element.sheet.cssRules].reverse()) {
+          if (!(rule instanceof CSSStyleRule || rule instanceof CSSKeyframesRule)) {
+            element.sheet.deleteRule(i);
+          }
+          i--;
+        }
+        i = 0;
+        for (let rule of [...element.sheet.cssRules]) {
+          if (rule instanceof CSSStyleRule) {
+            var cssText = rule.style.cssText;
+            element.sheet.deleteRule(i);
+            element.sheet.insertRule(`[skope-style="${id}"] :is(${rule.selectorText}) { ${cssText} }`, i);
+          }
+          i++;
+        }
+      }
+      if (element.sheet && element.parentElement) {
+        loaded();
+      } else {
+        element.addEventListener('load', loaded);
+      }
       return;
     }
     skope.getStore(element, 'currentSubs', parentSubs);
@@ -813,39 +893,6 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
         }
       });
       ready = (cb: (scopes: IElementScope[]) => void) => execSteps.push(cb);
-    }
-    if (element instanceof HTMLStyleElement) {
-      const loaded = () => {
-        const parent = element.parentElement;
-        if (!parent) return false;
-        if (!skope.sanitizer.isAttributeForced(parent, 'skope-style')) {
-          parent.removeAttribute('skope-style');
-        }
-        const id = parent.getAttribute('skope-style') || ++skope.styleIds;
-        skope.sanitizer.setAttributeForced(parent, 'skope-style', id + "");
-        let i = element.sheet.cssRules.length - 1;
-        for (let rule of [...element.sheet.cssRules].reverse()) {
-          if (!(rule instanceof CSSStyleRule || rule instanceof CSSKeyframesRule)) {
-            element.sheet.deleteRule(i);
-          }
-          i--;
-        }
-        i = 0;
-        for (let rule of [...element.sheet.cssRules]) {
-          if (rule instanceof CSSStyleRule) {
-            var cssText = rule.style.cssText;
-            element.sheet.deleteRule(i);
-            element.sheet.insertRule(`[skope-style="${id}"] :is(${rule.selectorText}) { ${cssText} }`, i);
-          }
-          i++;
-        }
-      }
-      if (element.sheet && element.parentElement) {
-        loaded();
-      } else {
-        element.addEventListener('load', loaded);
-      }
-      return;
     }
     if (element instanceof HTMLIFrameElement && element.hasAttribute('skope-iframe-content')) {
       ready(() => {

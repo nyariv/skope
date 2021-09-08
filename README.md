@@ -139,7 +139,7 @@ The `slot` attribute can be used as a placeholder for inner html of the componen
 ```html
   <div $counter="0">
 
-    <div s-component="test" $name="'Earth'">Thank you {{counter}}</div>
+    <div s-component="test" $name="'Earth'">Outer count {{counter}}</div>
 
     <template id="test" $name="'World'" $counter="0">
       <button @click="++counter">Hello {{name}}: {{counter}}</button>
@@ -149,7 +149,7 @@ The `slot` attribute can be used as a placeholder for inner html of the componen
           width: 200px;
         }
       </style>
-      <slot></slot>
+      <div slot></div>
     </template>
   </div>
 ```
@@ -171,7 +171,7 @@ This attribute is removed when the html is processed by skope. In the default st
 ```
 
 ```html
-  <div> <span s-for="(key, value) in {a: 1, b: 2, c: 3"> {{key}}: {{value}} </span> </div>
+  <div s-for="(k, v) in {c: 1, b: 2, a: 3}"> {{k}}: {{v}} </div>
 ```
 
 ### s-if
