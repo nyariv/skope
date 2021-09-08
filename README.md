@@ -139,17 +139,16 @@ The `slot` attribute can be used as a placeholder for inner html of the componen
 ```html
   <div $counter="0">
 
-    <div s-component="test" $name="'Earth'">Outer count {{counter}}</div>
+    <div s-component="test" $name="'Earth'">Outer counter {{counter}}</div>
 
     <template id="test" $name="'World'" $counter="0">
       <button @click="++counter">Hello {{name}}: {{counter}}</button>
       <style>
-        div {
-          border: 1px solid #aaa;
-          width: 200px;
+        span {
+          color: green;
         }
       </style>
-      <div slot></div>
+      <span slot></span>
     </template>
   </div>
 ```

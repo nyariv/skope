@@ -3,7 +3,7 @@
 import Sandbox, { IExecContext } from '@nyariv/sandboxjs';
 import { Change } from '@nyariv/sandboxjs/dist/node/executor';
 import createClass, { EqEvent, wrapType, DelegateObject, ownerDoc, isIterable } from './eQuery'
-import { IElementCollection } from './eQuery';
+import { IElementCollection as IElemCollection } from './eQuery';
 import HTMLSanitizer from './HTMLSanitizer';
 
 const regVarName = /^\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*$/;
@@ -109,6 +109,13 @@ function call(cb: () => void) {
   });
 }
 
+interface IElementCollection extends IElemCollection {
+  html(): string;
+  html(content: string|Element|DocumentFragment|IElementCollection): IElemCollection;
+  text(): string;
+  text(set: string): IElementCollection;
+}
+
 interface IElementScope {
   $el: IElementCollection;
   $dispatch(eventType: string, detail?: any, bubbles?: boolean, cancelable?: boolean): void;
@@ -152,12 +159,12 @@ function initialize (skope: Skope) {
   skope.defaultDelegateObject = defaultDelegateObject;
   skope.getStore = getStore;
   skope.deleteStore = deleteStore;
-  skope.wrap = wrap;
+  skope.wrap = wrap as (selector: wrapType, context: IElementCollection|Document) => IElementCollection;
   
   class ElementScope implements IElementScope {
     $el: IElementCollection;
     constructor(element: Element) {
-      this.$el = wrap(element, element.ownerDocument);
+      this.$el = wrap(element, element.ownerDocument) as IElementCollection;
     }
   
     $dispatch(eventType: string, detail?: any, bubbles = true, cancelable = true) {
@@ -207,6 +214,9 @@ function initialize (skope: Skope) {
       const prev = elem;
       unsubNested(getStore<subs>(elem.contentDocument.body, 'currentSubs'));
       elem = document.createElement('body');
+      if (prev.matches('[s-static], [s-static] *')) {
+        elem.setAttribute('s-static', '')
+      }
       const prevSub = currentSubs;
       currentSubs = getStore<subs>(elem, 'currentSubs', []);
       prevSub.push(currentSubs);
@@ -227,7 +237,7 @@ function initialize (skope: Skope) {
         st.innerHTML = css;
         prev.contentDocument.body.appendChild(st);
       });
-    } else {
+    } else if (!(elem instanceof HTMLTemplateElement)) {
       for (let el of [...elem.children]) {
         unsubNested(getStore<subs>(el, 'currentSubs'));
       }
@@ -268,14 +278,14 @@ function initialize (skope: Skope) {
     return contentElem.content;
   };
 
-  skope.RootScope = RootScope;
+  skope.RootScope = RootScope as new () => IRootScope;
   skope.ElementScope = ElementScope;
   skope.prototypeWhitelist.set(FileList, new Set());
   skope.prototypeWhitelist.set(File, new Set());
   skope.prototypeWhitelist.set(RootScope, new Set());
   skope.prototypeWhitelist.set(ElementCollection, new Set());
   skope.prototypeWhitelist.set(ElementScope, new Set());
-  skope.ElementCollection = ElementCollection
+  skope.ElementCollection = ElementCollection as new () => IElementCollection
   
   skope.defineDirective('show', (exec: DirectiveExec, scopes: IElementScope[]) => {
     return skope.watch(exec.att, watchRun(skope, scopes, exec.js), (val, lastVal) => {
@@ -287,10 +297,8 @@ function initialize (skope: Skope) {
   
   skope.defineDirective('text', (exec: DirectiveExec, scopes: IElementScope[]) => {
     return skope.watch(exec.att, watchRun(skope, scopes, exec.js), (val, lastVal) => {
-      //@ts-ignore
       skope.wrapElem(exec.element).text(val + "");
     }, () => {
-      //@ts-ignore
       skope.wrapElem(exec.element).text("");
     });
   });
@@ -312,7 +320,7 @@ function initialize (skope: Skope) {
 
   skope.defineDirective('component', (exec: DirectiveExec, scopes: IElementScope[]) => {
     const template = getRootScope(skope, scopes)?.$templates[exec.att.nodeValue];
-    if (!template) {
+    if (!(template instanceof HTMLTemplateElement)) {
       createError('Template not found', exec.att)
       return [];
     }
@@ -366,7 +374,6 @@ function initialize (skope: Skope) {
     elem.setAttribute('s-detached', '');
     processHTML(skope, elem, subs, delegate).run(pushScope(skope, scopes, elem, subs));
     if (isIframe) {
-      //@ts-ignore
       $elem.html(templateContent);
     }
     elem.removeAttribute('s-detached');
@@ -381,6 +388,7 @@ function initialize (skope: Skope) {
         }
         preprocessHTML(skope, slot, slotContent.content);
         slot.appendChild(slotContent.content);
+        processHTML(skope, slot, subs, exec.delegate).run(scopes);
       } else {
         slot.appendChild(slotContent.content);
         /** @todo handle mutation observer race condition */
@@ -436,12 +444,10 @@ function initialize (skope: Skope) {
   
   skope.defineDirective('html', (exec: DirectiveExec, scopes: IElementScope[]) => {
     return skope.watch(exec.att, watchRun(skope, scopes, exec.js), (val, lastVal) => {
-      if (val instanceof Node || typeof val === 'string' || val instanceof this.ElementCollection) {
-        //@ts-ignore
+      if (val instanceof Element || typeof val === 'string' || val instanceof skope.ElementCollection) {
         skope.wrapElem(exec.element).html(val);
       }
     }, () => {
-      //@ts-ignore
       skope.wrapElem(exec.element).html("");
     });
   });
@@ -897,7 +903,6 @@ function walkTree(skope: Skope, element: Node, parentSubs: subs, ready: (cb: (sc
     if (element instanceof HTMLIFrameElement && element.hasAttribute('skope-iframe-content')) {
       ready(() => {
         const exec = () => {
-          //@ts-ignore
           skope.wrapElem(element).html(element.getAttribute('skope-iframe-content'));
           element.removeAttribute('skope-iframe-content');
         }

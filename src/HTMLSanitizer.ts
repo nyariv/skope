@@ -3,6 +3,7 @@
 const regHrefJS = /^\s*javascript\s*:/i;
 const regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
 const regSystemAtt = /^(:|@|\$|s\-)/;
+const regRservedSystemAtt = /^skope-/;
 const defaultHTMLWhiteList: (new () => Element)[] = [
   HTMLBRElement,
   HTMLBodyElement,
@@ -154,7 +155,9 @@ export default class HTMLSanitizer {
     });
 
     sanitizeType(this, [HTMLIFrameElement], [], (el: HTMLIFrameElement) => {
-      this.setAttributeForced(el, 'skope-iframe-content', el.innerHTML);
+      if (!el.getAttribute('skope-iframe-content')) {
+        this.setAttributeForced(el, 'skope-iframe-content', el.innerHTML);
+      }
       el.innerHTML = '';
       return !el.src && !el.srcdoc;
     });
@@ -186,7 +189,11 @@ export default class HTMLSanitizer {
     const allowed = this.types.get(element.constructor as new () => Element);
     if (!allowed) return false;
     attName = attName.toLowerCase();
-    if (attName.match(regSystemAtt) || attName === 'skope') {
+    if (this.isAttributeForced(element, attName)) {
+      if (remove) {
+        return false;
+      }
+    } else if (attName.match(regSystemAtt) || attName === 'skope') {
       if (!preprocess) return false;
     } else if (/^on[a-z]+$/.test(attName)) {
       if (preprocess) {
@@ -215,8 +222,6 @@ export default class HTMLSanitizer {
       return this.allowedInputs.has(attValue);
     } else if (element instanceof HTMLButtonElement && attName == 'type') {
       return attValue === 'reset' || attValue === 'button';
-    } else if (remove && this.isAttributeForced(element, attName)) {
-      return false;
     }
     return true;
   }
@@ -231,7 +236,7 @@ export default class HTMLSanitizer {
         for (let att of [...element.attributes]) {
           const attValue = att.nodeValue;
           const attName = att.nodeName;
-          if (!reservedAtrributes.get(element)?.has(attName) && (!this.santizeAttribute(element, attName, attValue, !staticHtml) || (staticHtml && ["id", "style"].includes(attName)))) {
+          if (!this.santizeAttribute(element, attName, attValue, !staticHtml) || (staticHtml && ["id", "style"].includes(attName))) {
             element.removeAttribute(att.nodeName);
           }
         }
@@ -246,7 +251,7 @@ export default class HTMLSanitizer {
   }
 
   isAttributeForced(elem: Element, att: string) {
-    return reservedAtrributes.get(elem)?.has(att);
+    return reservedAtrributes.get(elem)?.has(att) || regRservedSystemAtt.test(att);
   }
 
   setAttributeForced(elem: Element, att: string, value: string) {
