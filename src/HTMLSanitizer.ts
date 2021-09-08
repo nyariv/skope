@@ -251,7 +251,7 @@ export default class HTMLSanitizer {
   }
 
   isAttributeForced(elem: Element, att: string) {
-    return reservedAtrributes.get(elem)?.has(att) || regRservedSystemAtt.test(att);
+    return reservedAtrributes.get(elem)?.has(att) || (regRservedSystemAtt.test(att) && elem.hasAttribute(att));
   }
 
   setAttributeForced(elem: Element, att: string, value: string) {

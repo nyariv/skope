@@ -1,6 +1,7 @@
 "use strict";
 
 import HTMLSanitizer from "./HTMLSanitizer";
+import { isIterable } from "./utils";
 
 // @ts-check
 /**
@@ -113,10 +114,6 @@ export type wrapType = selector|selector[];
 
 export function ownerDoc(coll: IElementCollection): HTMLDocument|undefined {
   return coll.get(0)?.ownerDocument;
-}
-
-export function isIterable(x: unknown): x is Iterable<unknown> {
-  return x && typeof x === 'object' && Symbol.iterator in x;
 }
 
 export default function createClass(sanitizer: () => HTMLSanitizer): {
