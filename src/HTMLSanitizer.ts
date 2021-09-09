@@ -1,8 +1,6 @@
-
-
 const regHrefJS = /^\s*javascript\s*:/i;
 const regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
-const regSystemAtt = /^(:|@|\$|s\-)/;
+const regSystemAtt = /^(:|@|\$|s-)/;
 const regRservedSystemAtt = /^skope-/;
 const defaultHTMLWhiteList: (new () => Element)[] = [
   HTMLBRElement,
@@ -42,106 +40,105 @@ const defaultHTMLWhiteList: (new () => Element)[] = [
   HTMLUnknownElement,
   HTMLTemplateElement,
   HTMLCanvasElement,
-  HTMLElement
+  HTMLElement,
 ];
 
 const globalAllowedAtttributes = new Set([
-  'id', 
-  'class', 
-  'style', 
-  'alt', 
+  'id',
+  'class',
+  'style',
+  'alt',
   'role',
   'aria-label',
   'aria-labelledby',
   'aria-hidden',
-  'tabindex', 
-  'title', 
-  'dir', 
+  'tabindex',
+  'title',
+  'dir',
   'lang',
   'height',
   'width',
-  'slot'
+  'slot',
 ]);
 
 export function sanitizeType(obj: HTMLSanitizer, t: (new () => Element)[], allowedAttributes: string[], element: (el: Element, preprocess: boolean) => boolean) {
   const s = new Set(allowedAttributes);
-  for (let type of t) {
-    obj.types.set(type, {attributes: s, element});
+  for (const type of t) {
+    obj.types.set(type, { attributes: s, element });
   }
 }
-
 
 const reservedAtrributes: WeakMap<Element, Set<string>> = new WeakMap();
 
 export default class HTMLSanitizer {
-  types: Map<new () => Element, {attributes: Set<string>, element: (el: Element, staticHtml: boolean) => boolean|void}> = new Map();
+  types: Map<new () => Element, { attributes: Set<string>, element: (el: Element, staticHtml: boolean) => boolean | void }> = new Map();
+
   srcAttributes = new Set(['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from']);
+
   allowedInputs = new Set([
     'button',
     'checkbox',
-    'color', 
-    'date', 
-    'datetime-local', 
-    'email', 
-    'file', 
-    'month', 
-    'number', 
+    'color',
+    'date',
+    'datetime-local',
+    'email',
+    'file',
+    'month',
+    'number',
     'password',
-    'radio', 
+    'radio',
     'range',
     'reset',
-    'tel', 
-    'text', 
-    'time', 
-    'url', 
-    'week'
+    'tel',
+    'text',
+    'time',
+    'url',
+    'week',
   ]);
-  
+
   constructor() {
-    sanitizeType(this, defaultHTMLWhiteList, [], () => { return true;});
-    
-    sanitizeType(this, [HTMLAnchorElement, 
-                  HTMLAreaElement],
-                  ['href', 
-                  'xlink:href', 
-                  'rel', 
-                  'shape', 
-                  'coords'], (el: Element) => { return true; });
+    sanitizeType(this, defaultHTMLWhiteList, [], () => true);
+
+    sanitizeType(this, [HTMLAnchorElement,
+      HTMLAreaElement],
+    ['href',
+      'xlink:href',
+      'rel',
+      'shape',
+      'coords'], (el: Element) => true);
     sanitizeType(this, [HTMLButtonElement], ['type', 'value'], (el: HTMLButtonElement) => {
-      if (el.type !== "reset" && el.type !== "button") {
-        el.type = "button"
+      if (el.type !== 'reset' && el.type !== 'button') {
+        el.type = 'button';
       }
-      return true; 
-    });
-    sanitizeType(this, [HTMLInputElement,
-                  HTMLSelectElement,
-                  HTMLOptGroupElement,
-                  HTMLOptionElement,
-                  HTMLLabelElement,
-                  HTMLTextAreaElement], 
-                  ['value', 
-                  'type', 
-                  'checked', 
-                  'selected', 
-                  'name', 
-                  'for',
-                  'max',
-                  'min',
-                  'placeholder',
-                  'readonly',
-                  'size',
-                  'multiple',
-                  'step',
-                  'autocomplete',
-                  'cols',
-                  'rows',
-                  'maxlength',
-                  'disabled',
-                  'required',
-                  'accept',
-                  'list'], (el: Element) => {
       return true;
     });
+    sanitizeType(this, [HTMLInputElement,
+      HTMLSelectElement,
+      HTMLOptGroupElement,
+      HTMLOptionElement,
+      HTMLLabelElement,
+      HTMLTextAreaElement],
+    ['value',
+      'type',
+      'checked',
+      'selected',
+      'name',
+      'for',
+      'max',
+      'min',
+      'placeholder',
+      'readonly',
+      'size',
+      'multiple',
+      'step',
+      'autocomplete',
+      'cols',
+      'rows',
+      'maxlength',
+      'disabled',
+      'required',
+      'accept',
+      'list'], (el: Element) => true);
     sanitizeType(this, [HTMLScriptElement], ['type'], (el: HTMLScriptElement, staticHtml) => {
       if (!el.type || el.type === 'text/javascript') {
         el.type = 'skopejs';
@@ -151,7 +148,7 @@ export default class HTMLSanitizer {
           el.innerHTML = html;
         });
       }
-      return !staticHtml && el.type === "skopejs";
+      return !staticHtml && el.type === 'skopejs';
     });
 
     sanitizeType(this, [HTMLIFrameElement], [], (el: HTMLIFrameElement) => {
@@ -164,25 +161,25 @@ export default class HTMLSanitizer {
 
     sanitizeType(this, [HTMLStyleElement], [], (el: HTMLStyleElement, staticHtml) => {
       if (staticHtml) return false;
-      return true; 
+      return true;
     });
 
-    sanitizeType(this, [HTMLPictureElement, 
-                  HTMLImageElement, 
-                  HTMLAudioElement,
-                  HTMLTrackElement,
-                  HTMLVideoElement,
-                  HTMLSourceElement], 
-                  ['src',
-                  'srcset',
-                  'sizes',
-                  'poster', 
-                  'autoplay', 
-                  'contorls', 
-                  'muted', 
-                  'loop', 
-                  'volume',
-                  'loading'], (el: Element) => { return true; });
+    sanitizeType(this, [HTMLPictureElement,
+      HTMLImageElement,
+      HTMLAudioElement,
+      HTMLTrackElement,
+      HTMLVideoElement,
+      HTMLSourceElement],
+    ['src',
+      'srcset',
+      'sizes',
+      'poster',
+      'autoplay',
+      'contorls',
+      'muted',
+      'loop',
+      'volume',
+      'loading'], (el: Element) => true);
   }
 
   santizeAttribute(element: Element, attName: string, attValue: string, preprocess = false, remove = false): boolean {
@@ -197,17 +194,18 @@ export default class HTMLSanitizer {
       if (!preprocess) return false;
     } else if (/^on[a-z]+$/.test(attName)) {
       if (preprocess) {
-        element.setAttribute('@' + attName.slice(2), attValue);
+        element.setAttribute(`@${attName.slice(2)}`, attValue);
       }
       return false;
-    } else if (allowed.attributes.has(attName) && this.srcAttributes.has(attName) && attValue !== 'javascript:void(0)') {
+    } else if (allowed.attributes.has(attName) && this.srcAttributes.has(attName) && attValue !== 'javascript:void(0)') { // eslint-disable-line
       const isJs = attValue.match(regHrefJS);
       if (isJs) {
         if (preprocess && (attName === 'href' || attName === 'xlink:href')) {
           if (!element.hasAttribute('@click')) {
             element.setAttribute('@click', attValue.substring(isJs[0].length));
           }
-          element.setAttribute(attName, 'javascript:void(0)');
+          /** @todo find better solution to preserver href linking */
+          // element.setAttribute(attName, 'javascript:void(0)'); // eslint-disable-line
         } else {
           return false;
         }
@@ -218,33 +216,32 @@ export default class HTMLSanitizer {
       return false;
     } else if (!allowed.attributes.has(attName) && !globalAllowedAtttributes.has(attName)) {
       return false;
-    } else if (element instanceof HTMLInputElement && attName == 'type') {
+    } else if (element instanceof HTMLInputElement && attName === 'type') {
       return this.allowedInputs.has(attValue);
-    } else if (element instanceof HTMLButtonElement && attName == 'type') {
+    } else if (element instanceof HTMLButtonElement && attName === 'type') {
       return attValue === 'reset' || attValue === 'button';
     }
     return true;
   }
 
-  sanitizeHTML(element: Element|DocumentFragment, staticHtml = false) {
+  sanitizeHTML(element: Element | DocumentFragment, staticHtml = false) {
     if (!(element instanceof DocumentFragment)) {
       const allowed = this.types.get(element.constructor as new () => Element);
       if (!allowed || !allowed.element(element, staticHtml)) {
         element.remove();
         return;
-      } else {
-        for (let att of [...element.attributes]) {
-          const attValue = att.nodeValue;
-          const attName = att.nodeName;
-          if (!this.santizeAttribute(element, attName, attValue, !staticHtml) || (staticHtml && ["id", "style"].includes(attName))) {
-            element.removeAttribute(att.nodeName);
-          }
+      }
+      for (const att of [...element.attributes]) {
+        const attValue = att.nodeValue;
+        const attName = att.nodeName;
+        if (!this.santizeAttribute(element, attName, attValue, !staticHtml) || (staticHtml && ['id', 'style'].includes(attName))) {
+          element.removeAttribute(att.nodeName);
         }
       }
     }
     if (element.children) {
       const children = element instanceof HTMLTemplateElement ? element.content.children : element.children;
-      for (let el of [...children]) {
+      for (const el of [...children]) {
         this.sanitizeHTML(el, staticHtml);
       }
     }
@@ -264,55 +261,51 @@ export default class HTMLSanitizer {
     elem.setAttribute(att, value);
   }
 
-  observeAttribute(parent: Element, att: string, cb: (elem: Element) => void, staticHtml: boolean, persistant = false): {cancel: () => void} {
+  observeAttribute(parent: Element, att: string, cb: (elem: Element) => void, staticHtml: boolean, persistant = false): { cancel: () => void } {
     const subs: Set<() => void> = new Set();
 
-    let selector = `[${att}]:not([${att}] [${att}])`;
+    const selector = `[${att}]:not([${att}] [${att}])`;
     const sanitize = (elem: Element) => {
       if (staticHtml) {
-        for (let el of elem.children) {
+        for (const el of elem.children) {
           this.sanitizeHTML(el, staticHtml);
         }
       } else {
         this.sanitizeHTML(elem, staticHtml);
       }
-    }
+    };
 
-    const observeLoad = (elem: Element, staticHtml: boolean) => {
-      return new Promise<Element>((resolve) => {
-        sanitize(elem);
-        const observer = new MutationObserver((muts) => {
-          for (let mut of muts) {
-            for (let target of mut.addedNodes) {
-              if (target instanceof Element) {
-                this.sanitizeHTML(target, staticHtml);
-              }
+    const observeLoad = (elem: Element, sHtml: boolean) => new Promise<Element>((resolve) => {
+      sanitize(elem);
+      const observer = new MutationObserver((muts) => {
+        for (const mut of muts) {
+          for (const target of mut.addedNodes) {
+            if (target instanceof Element) {
+              this.sanitizeHTML(target, sHtml);
             }
           }
-        });
-        document.addEventListener('readystatechange', () => {
-          if (document.readyState !== 'loading') {
-            setTimeout(() => {
-              sub();
-              resolve(elem);
-            })
-          }
-        });
-        observer.observe(elem, {childList: true, subtree: true});
-        const sub = () => {
-          observer.disconnect();
-          subs.delete(sub);
         }
-        subs.add(sub);
       });
-    }
+      document.addEventListener('readystatechange', () => {
+        if (document.readyState !== 'loading') {
+          setTimeout(() => {
+            sub();
+            resolve(elem);
+          });
+        }
+      });
+      observer.observe(elem, { childList: true, subtree: true });
+      const sub = () => {
+        observer.disconnect();
+        subs.delete(sub);
+      };
+      subs.add(sub);
+    });
 
-    const matches = (elem: Element) => {
-      return elem.matches(selector);
-    }
+    const matches = (elem: Element) => elem.matches(selector);
 
     let loading = false;
-  
+
     if (document.readyState === 'loading' || persistant) {
       loading = true;
       const found = new WeakSet();
@@ -320,24 +313,24 @@ export default class HTMLSanitizer {
         if (!elem || elem === parent) return false;
         if (found.has(elem)) return true;
         return isFound(elem.parentElement);
-      }
+      };
       const observer = new MutationObserver((muts) => {
-        for (let mut of muts) {
-          for (let elem of mut.addedNodes) {
+        for (const mut of muts) {
+          for (const elem of mut.addedNodes) {
             if (elem instanceof Element) {
               if (loading) {
                 if (!isFound(elem) && matches(elem)) {
                   found.add(elem);
                   observeLoad(elem, staticHtml).then((el) => {
                     cb(el);
-                  })
+                  });
                 } else {
-                  for (let el of elem.querySelectorAll(selector)) {
+                  for (const el of elem.querySelectorAll(selector)) {
                     if (!isFound(el)) {
                       found.add(el);
-                      observeLoad(el, staticHtml).then((el) => {
-                        cb(el);
-                      })
+                      observeLoad(el, staticHtml).then((ell) => {
+                        cb(ell);
+                      });
                     }
                   }
                 }
@@ -345,7 +338,7 @@ export default class HTMLSanitizer {
                 sanitize(elem);
                 cb(elem);
               } else {
-                for (let el of elem.querySelectorAll(selector)) {
+                for (const el of elem.querySelectorAll(selector)) {
                   sanitize(elem);
                   cb(el);
                 }
@@ -360,23 +353,23 @@ export default class HTMLSanitizer {
             setTimeout(() => {
               loading = false;
               sub();
-            })
+            });
           }
         });
       }
-      observer.observe(parent, {childList: true, subtree: true});
+      observer.observe(parent, { childList: true, subtree: true });
       const sub = () => {
         observer.disconnect();
         subs.delete(sub);
-      }
+      };
       subs.add(sub);
     }
-  
+
     if (matches(parent)) {
       sanitize(parent);
       cb(parent);
     } else {
-      for (let el of parent.querySelectorAll(selector)) {
+      for (const el of parent.querySelectorAll(selector)) {
         sanitize(el);
         cb(el);
       }
@@ -384,11 +377,10 @@ export default class HTMLSanitizer {
 
     return {
       cancel() {
-        for (let sub of subs) {
+        for (const sub of subs) {
           sub();
         }
-      }
-    }
+      },
+    };
   }
-  
 }

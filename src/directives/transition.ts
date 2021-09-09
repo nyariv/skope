@@ -1,7 +1,7 @@
-import { watchRun } from "../runtime/watch";
-import Skope, { DirectiveExec, IElementScope } from "../Skope";
+import { watchRun } from '../runtime/watch';
+import Skope, { DirectiveExec, IDirectiveDefinition, IElementScope } from '../Skope';
 
-export default function transitionDirective(skope: Skope) {
+export default function transitionDirective(skope: Skope): IDirectiveDefinition {
   return {
     name: 'transition',
     callback: (exec: DirectiveExec, scopes: IElementScope[]) => {
@@ -21,16 +21,16 @@ export default function transitionDirective(skope: Skope) {
           $el.removeClass('s-transition-idle');
           $el.addClass('s-transition-active');
           val.then(() => {
-            if(lastPromise !== val) return;
+            if (lastPromise !== val) return;
             $el.removeClass('s-transition-active');
             $el.addClass('s-transition-done');
           }, () => {
-            if(lastPromise !== val) return;
+            if (lastPromise !== val) return;
             $el.removeClass('s-transition-active');
             $el.addClass('s-transition-error');
-          })
+          });
         }
-      })
-    }
-  }
+      });
+    },
+  };
 }

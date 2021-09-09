@@ -1,42 +1,40 @@
-import { IExecContext } from "@nyariv/sandboxjs";
-import { Change } from "@nyariv/sandboxjs/dist/node/executor";
-import Skope, { IElementScope, IRootScope } from "./Skope";
+import { IExecContext } from '@nyariv/sandboxjs';
+import { Change } from '@nyariv/sandboxjs/dist/node/executor';
+import Skope, { IElementScope, IRootScope } from './Skope';
 
 export const regVarName = /^\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*$/;
 export const regKeyValName = /^\s*\(([a-zA-Z$_][a-zA-Z$_\d]*)\s*,\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*\)$/;
 
-
-export function isObject (object: any): object is {[key: string]: unknown} {
+export function isObject(object: any): object is { [key: string]: unknown } {
   return object !== null && typeof object === 'object';
 }
 
 export function isIterable(x: unknown): x is Iterable<unknown> {
   return x && typeof x === 'object' && Symbol.iterator in x;
 }
-  
-export type sub = (() => void)|sub[];
-export type subs = sub[];
 
+export type Sub = (() => void) | Sub[];
+export type Subs = Sub[];
 
 interface IVarSubs {
-  subscribeGet?: (callback: (obj: object, name: string) => void) => {
+  subscribeGet?: (callback: (obj: Record<string, unknown>, name: string) => void) => {
     unsubscribe: () => void;
   };
-  subscribeSet?: (obj: object, name: string, callback: (modification: Change) => void) => {
+  subscribeSet?: (obj: Record<string, unknown>, name: string, callback: (modification: Change) => void) => {
     unsubscribe: () => void;
   }
 }
 
-export const varSubsStore: WeakMap<() => unknown|Promise<unknown>, IVarSubs> = new WeakMap();
+export const varSubsStore: WeakMap<() => unknown | Promise<unknown>, IVarSubs> = new WeakMap();
 
 export function createVarSubs(skope: Skope, context: IExecContext) {
   const varSubs: IVarSubs = {};
-  varSubs.subscribeGet = (callback: (obj: object, name: string) => void) => skope.sandbox.subscribeGet(callback, context);
-  varSubs.subscribeSet = (obj: object, name: string, callback: (modification: Change) => void) => skope.sandbox.subscribeSet(obj, name, callback, context);
+  varSubs.subscribeGet = (callback: (obj: Record<string, unknown>, name: string) => void) => skope.sandbox.subscribeGet(callback, context);
+  varSubs.subscribeSet = (obj: Record<string, unknown>, name: string, callback: (modification: Change) => void) => skope.sandbox.subscribeSet(obj, name, callback, context);
   return varSubs;
 }
 
-export function unsubNested(subs: sub) {
+export function unsubNested(subs: Sub) {
   if (!subs) return;
   if (typeof subs === 'function') {
     subs();

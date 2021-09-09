@@ -1,13 +1,12 @@
-import Skope, { IElementScope } from "../Skope";
-import { createError } from "../utils";
-import { getRootScope } from "./scope";
+import Skope, { IElementScope } from '../Skope';
+import { createError } from '../utils';
+import { getRootScope } from '../runtime/scope';
 
-
-export function registerTemplates(skope: Skope, elem: DocumentFragment|Element, scopes: IElementScope[]) {
+export default function registerTemplates(skope: Skope, elem: DocumentFragment | Element, scopes: IElementScope[]) {
   const root = getRootScope(skope, scopes);
   if (!root) return;
-  const recurse = (elem: Element|DocumentFragment) => {
-    elem.querySelectorAll('template[id]:not([s-static] template, [s-detached] template)').forEach((template: HTMLTemplateElement) => {
+  const recurse = (el: Element | DocumentFragment) => {
+    el.querySelectorAll('template[id]:not([s-static] template, [s-detached] template)').forEach((template: HTMLTemplateElement) => {
       if (template.id) {
         if (root.$templates[template.id]) {
           createError('Duplicate template definition', template);
@@ -18,6 +17,6 @@ export function registerTemplates(skope: Skope, elem: DocumentFragment|Element, 
         recurse(template.content);
       }
     });
-  }
+  };
   recurse(elem);
 }

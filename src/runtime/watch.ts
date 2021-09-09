@@ -1,30 +1,31 @@
-import { getRootElement } from "../parser/scope";
-import Skope, { IElementScope } from "../Skope";
-import { createError, createVarSubs, subs, unsubNested, varSubsStore } from "../utils";
-
+import { getRootElement } from './scope';
+import Skope, { IElementScope } from '../Skope';
+import {
+  createError, createVarSubs, Subs, unsubNested, varSubsStore,
+} from '../utils';
 
 export function watchRun(skope: Skope, el: Node, scopes: IElementScope[], code: string): () => unknown {
   try {
-    var exec = skope.exec(getRootElement(skope, scopes), 'return ' + code, scopes);
+    const exec = skope.exec(getRootElement(skope, scopes), `return ${code}`, scopes);
     varSubsStore.set(exec.run, createVarSubs(skope, exec.context));
+    return exec.run;
   } catch (err) {
     createError(err.message, el);
     const r = () => {};
-    varSubsStore.set(r, {subscribeGet() {return {unsubscribe(){}}},subscribeSet(){return {unsubscribe(){}}}})
+    varSubsStore.set(r, { subscribeGet() { return { unsubscribe() {} }; }, subscribeSet() { return { unsubscribe() {} }; } });
     return r;
   }
-  return exec.run;
 }
 
-export function watch<T>(skope: Skope, elem: Node, toWatch: () => T, handler: (val: T, lastVal: T|undefined) => void|Promise<void>, errorCb?: (err: Error) => void): subs {
+export function watch<T>(skope: Skope, elem: Node, toWatch: () => T, handler: (val: T, lastVal: T | undefined) => void | Promise<void>, errorCb?: (err: Error) => void): Subs {
   const watchGets: Map<any, Set<string>> = new Map();
-  const subUnsubs: subs = [];
+  const subUnsubs: Subs = [];
   let varSubs = varSubsStore.get(toWatch);
   if (!varSubs) {
     const context = skope.sandbox.getContext(toWatch);
     if (!context) {
       createError('Non-sandbox watch callback', elem);
-      return;
+      return subUnsubs;
     }
     varSubs = createVarSubs(skope, context);
   }
@@ -33,19 +34,17 @@ export function watch<T>(skope: Skope, elem: Node, toWatch: () => T, handler: (v
   let start = Date.now();
   let count = 0;
   let lastPromise: any;
-  let ignore = new WeakMap<any, Set<string>>()
+  const ignore = new WeakMap<any, Set<string>>();
   const digest = () => {
     if ((Date.now() - start) > 4000) {
       count = 0;
       start = Date.now();
-    } else {
-      if (count++ > 200) {
-        createError('Too many digests', elem);
-        return;
-      }
+    } else if (count++ > 200) {
+      createError('Too many digests', elem);
+      return;
     }
     unsubNested(subUnsubs);
-    let g = varSubs?.subscribeGet((obj: any, name: string) => {
+    const g = varSubs?.subscribeGet((obj: any, name: string) => {
       if (obj === undefined) return;
       const list = watchGets.get(obj) || new Set();
       list.add(name);
@@ -60,9 +59,9 @@ export function watch<T>(skope: Skope, elem: Node, toWatch: () => T, handler: (v
       return;
     }
     g.unsubscribe();
-    for (let item of watchGets) {
+    for (const item of watchGets) {
       const obj = item[0];
-      for (let name of item[1]) {
+      for (const name of item[1]) {
         subUnsubs.push(varSubs?.subscribeSet(obj, name, () => {
           let names = ignore.get(obj);
           if (!names) {
@@ -73,9 +72,10 @@ export function watch<T>(skope: Skope, elem: Node, toWatch: () => T, handler: (v
         }).unsubscribe);
       }
     }
-    for (let item of watchGets) {
+    /* eslint-disable @typescript-eslint/no-loop-func */
+    for (const item of watchGets) {
       const obj = item[0];
-      for (let name of item[1]) {
+      for (const name of item[1]) {
         subUnsubs.push(skope.sandbox.subscribeSetGlobal(obj, name, (mod) => {
           if (ignore.get(obj)?.has(name)) {
             ignore.get(obj).delete(name);
@@ -90,6 +90,7 @@ export function watch<T>(skope: Skope, elem: Node, toWatch: () => T, handler: (v
         }).unsubscribe);
       }
     }
+    /* eslint-enable @typescript-eslint/no-loop-func */
     watchGets.clear();
     const promise = Promise.resolve(!errorCb ? undefined : val);
     lastPromise = promise;
@@ -105,8 +106,8 @@ export function watch<T>(skope: Skope, elem: Node, toWatch: () => T, handler: (v
           createError(err?.message, elem);
         }
       }
-    }, errorCb)
-  }
+    }, errorCb);
+  };
   digest();
   return subUnsubs;
 }

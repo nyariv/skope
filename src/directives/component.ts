@@ -1,40 +1,39 @@
-import { preprocessHTML, processHTML } from "../parser/process";
-import { getRootScope, pushScope } from "../parser/scope";
-import Skope, { DirectiveExec, IElementScope } from "../Skope";
-import { createError, subs } from "../utils";
+import { getRootScope, pushScope } from '../runtime/scope';
+import Skope, { DirectiveExec, IDirectiveDefinition, IElementScope } from '../Skope';
+import { createError, Subs } from '../utils';
 
 const ddd = document.createElement('div');
 ddd.innerHTML = '<span $$templates="$templates"><span>';
 const $$templatesAttr = ddd.querySelector('span').attributes.item(0);
 
-export default function componentDirective(skope: Skope) {
+export default function componentDirective(skope: Skope): IDirectiveDefinition {
   return {
     name: 'component',
     callback: (exec: DirectiveExec, scopes: IElementScope[]) => {
       const template = getRootScope(skope, scopes)?.$templates[exec.att.nodeValue];
       if (!(template instanceof HTMLTemplateElement)) {
-        createError('Template not found', exec.att)
+        createError('Template not found', exec.att);
         return [];
       }
-  
+
       const elem = exec.element;
       const $elem = skope.wrapElem(elem);
-      const subs: subs = [];
+      const subs: Subs = [];
       const delegate = $elem.delegate();
-  
+
       const isStatic = elem.hasAttribute('s-static');
       elem.removeAttribute('s-static');
       const templateContent = template.content.cloneNode(true) as DocumentFragment;
       const slot = templateContent.querySelector('[slot]');
-  
-      for (let attribute of template.attributes) {
+
+      for (const attribute of template.attributes) {
         const name = attribute.nodeName.toLowerCase();
         if (name === 'id') continue;
         if (elem.hasAttribute(name)) continue;
         elem.setAttributeNode(attribute.cloneNode(true) as Attr);
       }
       elem.setAttributeNode($$templatesAttr.cloneNode(true) as Attr);
-  
+
       if (slot) {
         slot.innerHTML = '';
         if (elem.hasAttribute('s-detached')) {
@@ -50,7 +49,7 @@ export default function componentDirective(skope: Skope) {
       elem.removeAttribute('s-html');
       elem.removeAttribute('s-text');
       const slotContent = document.createElement('template');
-  
+
       const isIframe = elem instanceof HTMLIFrameElement;
       if (isIframe) {
         if (slot) {
@@ -61,26 +60,26 @@ export default function componentDirective(skope: Skope) {
         slotContent.content.append(...elem.childNodes);
         elem.appendChild(templateContent);
       }
-  
+
       elem.removeAttribute('s-component');
       elem.setAttribute('s-detached', '');
-      processHTML(skope, elem, subs, delegate).run(pushScope(skope, scopes, elem, subs));
+      skope.processHTML(skope, elem, subs, delegate).run(pushScope(skope, scopes, elem, subs));
       if (isIframe) {
         $elem.html(templateContent);
       }
       elem.removeAttribute('s-detached');
       elem.setAttribute('s-component', exec.att.nodeValue);
       elem.setAttribute('component-processed', '');
-  
+
       if (slot) {
         skope.getStore<IElementScope[]>(slot, 'scopes', scopes);
         if (isIframe) {
           if (isStatic) {
             slot.setAttribute('s-static', '');
           }
-          preprocessHTML(skope, slot, slotContent.content);
+          skope.preprocessHTML(skope, slot, slotContent.content);
           slot.appendChild(slotContent.content);
-          processHTML(skope, slot, subs, exec.delegate).run(scopes);
+          skope.processHTML(skope, slot, subs, exec.delegate).run(scopes);
         } else {
           slot.appendChild(slotContent.content);
           /** @todo handle mutation observer race condition */
@@ -88,11 +87,11 @@ export default function componentDirective(skope: Skope) {
             if (isStatic) {
               slot.setAttribute('s-static', '');
             }
-            processHTML(skope, slot, subs, exec.delegate).run(scopes);
+            skope.processHTML(skope, slot, subs, exec.delegate).run(scopes);
           });
         }
       }
       return subs;
-    }
-  }
+    },
+  };
 }

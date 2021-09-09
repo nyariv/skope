@@ -1,21 +1,20 @@
 // @ts-check
 
 import Sandbox, { IExecContext } from '@nyariv/sandboxjs';
-import { wrapType, DelegateObject } from './eQuery'
-import { IElementCollection as IElemCollection } from './eQuery';
+import { WrapType, DelegateObject, IElementCollection as IElemCollection } from './eQuery';
 import HTMLSanitizer from './HTMLSanitizer';
-import { subs, unsubNested } from './utils';
-import { processHTML } from './parser/process';
-import { initialize } from './runtime/initialize';
-import { getScope } from './parser/scope';
-import { registerTemplates } from './parser/template';
+import { Subs, unsubNested } from './utils';
+import { walkerInstance, walkTree } from './parser/walker';
+import initialize from './runtime/initialize';
+import { getScope } from './runtime/scope';
+import registerTemplates from './parser/template';
 import { watch } from './runtime/watch';
 
-export class Component {}
+export interface Component {}
 
 export interface IElementCollection extends IElemCollection {
   html(): string;
-  html(content: string|Element|DocumentFragment|IElementCollection): IElemCollection;
+  html(content: string | Element | DocumentFragment | IElementCollection): IElemCollection;
   text(): string;
   text(set: string): IElementCollection;
 }
@@ -23,54 +22,72 @@ export interface IElementCollection extends IElemCollection {
 export interface IElementScope {
   $el: IElementCollection;
   $dispatch(eventType: string, detail?: any, bubbles?: boolean, cancelable?: boolean): void;
-  $watch(cb: () => any, callback: (val: any, lastVal: any) => void): {unsubscribe: () => void};
+  $watch(cb: () => any, callback: (val: any, lastVal: any) => void): { unsubscribe: () => void };
   $delay(ms: number): Promise<void>;
 }
 export interface IRootScope extends IElementScope {
-  $templates: {[name: string]: HTMLTemplateElement};
-  $refs: {[name: string]: IElementCollection};
-  $wrap(element: wrapType): IElementCollection;
+  $templates: { [name: string]: HTMLTemplateElement };
+  $refs: { [name: string]: IElementCollection };
+  $wrap(element: WrapType): IElementCollection;
 }
-  
+
 export interface DirectiveExec {
   element: Element,
   att: Node,
   directive: string,
   js: string,
   original: string,
-  subs: subs,
+  subs: Subs,
   delegate: DelegateObject
 }
 
+export interface IDirectiveDefinition {
+  name: string;
+  callback: (exec: DirectiveExec, scopes: IElementScope[]) => Subs
+}
 
 export default class Skope {
   components: any = {};
+
   sanitizer: HTMLSanitizer;
-  directives: {[name: string]: (exce: DirectiveExec, scopes: IElementScope[]) => subs} = {};
+
+  directives: { [name: string]: (exec: DirectiveExec, scopes: IElementScope[]) => Subs } = {};
 
   globals = Sandbox.SAFE_GLOBALS;
+
   prototypeWhitelist = Sandbox.SAFE_PROTOTYPES;
+
   sandbox: Sandbox;
-  sandboxCache: WeakMap<Node, {[code: string]: (...scopes: (any)[]) => {
+
+  sandboxCache: WeakMap<Node, { [code: string]: (...scopes: (any)[]) => {
     context: IExecContext;
     run: () => unknown;
-  }|{
+  } | {
     context: IExecContext;
     run: () => Promise<unknown>;
-  }}> = new WeakMap();
-  ElementCollection: new (item?: number|Element, ...items: Element[]) => IElementCollection;
-  wrap: (selector: wrapType, context: IElementCollection|Document) => IElementCollection;
+  } }> = new WeakMap();
+
+  ElementCollection: new (item?: number | Element, ...items: Element[]) => IElementCollection;
+
+  wrap: (selector: WrapType, context: IElementCollection | Document) => IElementCollection;
+
   defaultDelegateObject: DelegateObject;
+
   getStore: <T>(elem: Node, store: string, defaultValue?: T) => T;
+
   deleteStore: (elem: Element, store: string) => boolean;
+
   RootScope: new (el: Element) => IRootScope;
+
   ElementScope: new (el: Element) => IElementScope;
+
   styleIds = 0;
-  
+
   calls: (() => void)[] = [];
+
   callTimer: any;
 
-  constructor(options?: {sanitizer?: HTMLSanitizer, executionQuote?: bigint, allowRegExp?: boolean}) {
+  constructor(options?: { sanitizer?: HTMLSanitizer, executionQuote?: bigint, allowRegExp?: boolean }) {
     this.sanitizer = options?.sanitizer || new HTMLSanitizer();
     delete this.globals.Function;
     delete this.globals.eval;
@@ -79,9 +96,9 @@ export default class Skope {
     }
     initialize(this);
     this.sandbox = new Sandbox({
-      globals: this.globals, 
+      globals: this.globals,
       prototypeWhitelist: this.prototypeWhitelist,
-      executionQuota: options?.executionQuote || 100000n
+      executionQuota: options?.executionQuote || 100000n,
     });
   }
 
@@ -90,9 +107,9 @@ export default class Skope {
     if (this.callTimer) return;
     this.callTimer = setTimeout(() => {
       this.callTimer = null;
-      let toCall = [...this.calls];
+      const toCall = [...this.calls];
       this.calls.length = 0;
-      for (let c of toCall) {
+      for (const c of toCall) {
         try {
           c();
         } catch (err) {
@@ -113,8 +130,8 @@ export default class Skope {
   wrapElem(el: Element) {
     return this.wrap(el, el.ownerDocument);
   }
-  
-  watch<T>(elem: Node, toWatch: () => T, handler: (val: T, lastVal: T|undefined) => void|Promise<void>, errorCb?: (err: Error) => void): subs {
+
+  watch<T>(elem: Node, toWatch: () => T, handler: (val: T, lastVal: T | undefined) => void | Promise<void>, errorCb?: (err: Error) => void): Subs {
     return watch(this, elem, toWatch, handler, errorCb);
   }
 
@@ -123,9 +140,9 @@ export default class Skope {
     run: () => unknown;
   } {
     el = el || document;
-    let codes = this.sandboxCache.get(el) || {};
+    const codes = this.sandboxCache.get(el) || {};
     this.sandboxCache.set(el, codes);
-    const key = 'sync:' + code;
+    const key = `sync:${code}`;
     codes[key] = codes[key] || this.sandbox.compile(code);
     return codes[key](...scopes);
   }
@@ -135,33 +152,33 @@ export default class Skope {
     run: () => Promise<unknown>;
   } {
     el = el || document;
-    let codes: {[code: string]: (...scopes: (any)[]) => {
+    const codes: { [code: string]: (...scs: (any)[]) => {
       context: IExecContext;
       run: () => Promise<unknown>;
-    }} = this.sandboxCache.get(el) as any || {};
+    } } = this.sandboxCache.get(el) as any || {};
     this.sandboxCache.set(el, codes);
-    const key = 'async:' + code;
+    const key = `async:${code}`;
     codes[key] = codes[key] || this.sandbox.compileAsync(code);
     return codes[key](...scopes);
   }
-  
-  defineDirective(name: string, callback: (exce: DirectiveExec, scopes: IElementScope[]) => subs) {
-    this.directives[name] = callback;
+
+  defineDirective(exec: IDirectiveDefinition) {
+    this.directives[exec.name] = exec.callback;
   }
-  
-  init(elem?: Element, component?: string, alreadyPreprocessed = false): {cancel: () => void} {
-    const subs: subs = [];
-  
+
+  init(elem?: Element, component?: string, alreadyPreprocessed = false): { cancel: () => void } {
+    const subs: Subs = [];
+
     if (!alreadyPreprocessed) {
-      let sub2 = this.sanitizer.observeAttribute(elem || document.documentElement, 's-static', () => {}, true, true);
+      const sub2 = this.sanitizer.observeAttribute(elem || document.documentElement, 's-static', () => {}, true, true);
       subs.push(sub2.cancel);
     }
-    
-    let sub = this.sanitizer.observeAttribute(elem || document.documentElement, 'skope', (el) => {
+
+    const sub = this.sanitizer.observeAttribute(elem || document.documentElement, 'skope', (el) => {
       const comp = component || el.getAttribute('skope');
       const scope = getScope(this, el, subs, this.components[comp] || {}, true);
       registerTemplates(this, el, [scope]);
-      const processed = processHTML(this, el, subs, this.defaultDelegateObject);
+      const processed = this.processHTML(this, el, subs, this.defaultDelegateObject);
       this.sanitizer.setAttributeForced(el, 'skope-processed', '');
       processed.run([scope]);
     }, false);
@@ -171,7 +188,38 @@ export default class Skope {
     return {
       cancel() {
         unsubNested(subs);
-      }
+      },
+    };
+  }
+
+  preprocessHTML(skope: Skope, parent: Element, html: DocumentFragment | Element | string): DocumentFragment | Element {
+    let elem: DocumentFragment | Element;
+    if (typeof html === 'string') {
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      elem = template.content;
+    } else {
+      elem = html;
     }
+    if (parent.matches('[s-static], [s-static] *')) {
+      skope.sanitizer.sanitizeHTML(elem, true);
+    } else {
+      for (const el of elem.querySelectorAll('[s-static]:not([s-static] [s-static])')) {
+        for (const child of el.children) {
+          skope.sanitizer.sanitizeHTML(child, true);
+        }
+      }
+      skope.sanitizer.sanitizeHTML(elem);
+    }
+    return elem;
+  }
+
+  processHTML(skope: Skope, elem: Node, subs: Subs, delegate: DelegateObject, skipFirst = false) {
+    const exec = walkerInstance();
+    walkTree(skope, elem, subs, exec.ready, delegate, skipFirst);
+    return {
+      elem,
+      run: exec.run,
+    };
   }
 }

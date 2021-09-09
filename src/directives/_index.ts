@@ -1,28 +1,26 @@
-import Skope, { DirectiveExec, IElementScope } from "../Skope";
-import htmlDirective from "./html";
-import ifDirective from "./if";
-import showDirective from "./show";
-import modelDirective from "./model";
-import refDirective from "./ref";
-import textDirective from "./text";
-import componentDirective from "./component";
-import transitionDirective from "./transition";
-import { subs } from "../utils";
+import Skope, { DirectiveExec, IDirectiveDefinition, IElementScope } from '../Skope';
+import htmlDirective from './html';
+import showDirective from './show';
+import modelDirective from './model';
+import refDirective from './ref';
+import textDirective from './text';
+import componentDirective from './component';
+import transitionDirective from './transition';
+import { Subs } from '../utils';
 
 export default function directives(skope: Skope) {
-  const ret: {[name: string]: (exce: DirectiveExec, scopes: IElementScope[]) => subs} = {};
-  for (let dir of [
+  const ret: { [name: string]: IDirectiveDefinition } = {};
+  for (const dir of [
     refDirective,
     htmlDirective,
     showDirective,
-    ifDirective,
     textDirective,
     modelDirective,
     componentDirective,
-    transitionDirective
+    transitionDirective,
   ]) {
     const directive = dir(skope);
-    ret[directive.name] = directive.callback;
+    ret[directive.name] = directive;
   }
   return ret;
 }

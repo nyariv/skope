@@ -1,8 +1,10 @@
 import HTMLSanitizer from './HTMLSanitizer';
+
 const sanitizer = new HTMLSanitizer();
-const imps = ['./Skope.js']
+const imps = ['./Skope.js'];
 const init = import(imps.pop()).then((mod) => {
-  const skope = new mod.default({sanitizer});
+  const Skope = mod.default; // eslint-disable-line
+  const skope = new Skope({ sanitizer });
   return (el: Element) => skope.init(el, undefined, true);
 });
 
@@ -24,8 +26,8 @@ subs.push(sub.cancel);
 
 (globalThis as any).cancelSkope = function cancel() {
   canceled = true;
-  for (let sub of subs) {
-    sub();
+  for (const cb of subs) {
+    cb();
   }
   subs.length = 0;
-}
+};

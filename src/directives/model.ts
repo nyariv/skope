@@ -1,7 +1,7 @@
-import { getRootElement, pushScope } from "../parser/scope";
-import { watchRun } from "../runtime/watch";
-import Skope, { DirectiveExec, IElementScope } from "../Skope";
-import { createError, subs } from "../utils";
+import { getRootElement, pushScope } from '../runtime/scope';
+import { watchRun } from '../runtime/watch';
+import Skope, { DirectiveExec, IElementScope } from '../Skope';
+import { createError, Subs } from '../utils';
 
 export default function modelDirective(skope: Skope) {
   return {
@@ -18,13 +18,13 @@ export default function modelDirective(skope: Skope) {
       const change = () => {
         last = !isContentEditable ? $el.val() : $el.html();
         try {
-          skope.exec(getRootElement(skope, scopes), exec.js.trim() + ' = ($$value === undefined && !reset) ? ' + exec.js.trim() + ' : $$value', pushScope(skope, scopes, el, exec.subs, {$$value: last, reset})).run();
+          skope.exec(getRootElement(skope, scopes), `${exec.js.trim()} = ($$value === undefined && !reset) ? ${exec.js.trim()} : $$value`, pushScope(skope, scopes, el, exec.subs, { $$value: last, reset })).run();
           reset = false;
         } catch (err) {
           createError(err?.message, exec.att);
         }
-      }
-      const sub: subs = [];
+      };
+      const sub: Subs = [];
       sub.push(exec.delegate.on(el, 'input', change));
       if (el.form) {
         const $form = skope.wrap(el.form, el.ownerDocument);
@@ -33,16 +33,16 @@ export default function modelDirective(skope: Skope) {
       sub.push(skope.watch(exec.att, watchRun(skope, exec.att, scopes, exec.js.trim()), (val, lastVal) => {
         if (val === last) return;
         if (isContentEditable) {
-          $el.html(val + "");
+          $el.html(`${val}`);
         } else {
           $el.val(val as any);
         }
       }, () => {
         if (isContentEditable) {
-          $el.html("");
+          $el.html('');
         }
       }));
       return sub;
-    }
-  }
+    },
+  };
 }
