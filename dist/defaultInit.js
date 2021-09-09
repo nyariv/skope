@@ -3,7 +3,8 @@
 
     var regHrefJS = /^\s*javascript\s*:/i;
     var regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
-    var regSystemAtt = /^(:|@|\$|s\-)/;
+    var regSystemAtt = /^(:|@|\$|s-)/;
+    var regRservedSystemAtt = /^skope-/;
     var defaultHTMLWhiteList = [HTMLBRElement, HTMLBodyElement, HTMLDListElement, HTMLDataElement, HTMLDataListElement, HTMLDivElement, HTMLFieldSetElement, HTMLFormElement, HTMLHRElement, HTMLHeadingElement, HTMLLIElement, HTMLLegendElement, HTMLMapElement, HTMLMetaElement, HTMLMeterElement, HTMLModElement, HTMLOListElement, HTMLOutputElement, HTMLParagraphElement, HTMLPreElement, HTMLProgressElement, HTMLQuoteElement, HTMLSpanElement, HTMLTableCaptionElement, HTMLTableCellElement, HTMLTableColElement, HTMLTableElement, HTMLTableSectionElement, HTMLTableRowElement, HTMLTimeElement, HTMLTitleElement, HTMLUListElement, HTMLUnknownElement, HTMLTemplateElement, HTMLCanvasElement, HTMLElement];
     var globalAllowedAtttributes = new Set(['id', 'class', 'style', 'alt', 'role', 'aria-label', 'aria-labelledby', 'aria-hidden', 'tabindex', 'title', 'dir', 'lang', 'height', 'width', 'slot']);
     function sanitizeType(obj, t, allowedAttributes, element) {
@@ -22,22 +23,16 @@
         this.types = new Map();
         this.srcAttributes = new Set(['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from']);
         this.allowedInputs = new Set(['button', 'checkbox', 'color', 'date', 'datetime-local', 'email', 'file', 'month', 'number', 'password', 'radio', 'range', 'reset', 'tel', 'text', 'time', 'url', 'week']);
-        sanitizeType(this, defaultHTMLWhiteList, [], () => {
-          return true;
-        });
-        sanitizeType(this, [HTMLAnchorElement, HTMLAreaElement], ['href', 'xlink:href', 'rel', 'shape', 'coords'], el => {
-          return true;
-        });
+        sanitizeType(this, defaultHTMLWhiteList, [], () => true);
+        sanitizeType(this, [HTMLAnchorElement, HTMLAreaElement], ['href', 'xlink:href', 'rel', 'shape', 'coords'], el => true);
         sanitizeType(this, [HTMLButtonElement], ['type', 'value'], el => {
-          if (el.type !== "reset" && el.type !== "button") {
-            el.type = "button";
+          if (el.type !== 'reset' && el.type !== 'button') {
+            el.type = 'button';
           }
 
           return true;
         });
-        sanitizeType(this, [HTMLInputElement, HTMLSelectElement, HTMLOptGroupElement, HTMLOptionElement, HTMLLabelElement, HTMLTextAreaElement], ['value', 'type', 'checked', 'selected', 'name', 'for', 'max', 'min', 'placeholder', 'readonly', 'size', 'multiple', 'step', 'autocomplete', 'cols', 'rows', 'maxlength', 'disabled', 'required', 'accept', 'list'], el => {
-          return true;
-        });
+        sanitizeType(this, [HTMLInputElement, HTMLSelectElement, HTMLOptGroupElement, HTMLOptionElement, HTMLLabelElement, HTMLTextAreaElement], ['value', 'type', 'checked', 'selected', 'name', 'for', 'max', 'min', 'placeholder', 'readonly', 'size', 'multiple', 'step', 'autocomplete', 'cols', 'rows', 'maxlength', 'disabled', 'required', 'accept', 'list'], el => true);
         sanitizeType(this, [HTMLScriptElement], ['type'], (el, staticHtml) => {
           if (!el.type || el.type === 'text/javascript') {
             el.type = 'skopejs';
@@ -48,19 +43,21 @@
             });
           }
 
-          return !staticHtml && el.type === "skopejs";
+          return !staticHtml && el.type === 'skopejs';
         });
         sanitizeType(this, [HTMLIFrameElement], [], el => {
-          this.setAttributeForced(el, 'skope-iframe-content', el.innerHTML);
+          if (!el.getAttribute('skope-iframe-content')) {
+            this.setAttributeForced(el, 'skope-iframe-content', el.innerHTML);
+          }
+
+          el.innerHTML = '';
           return !el.src && !el.srcdoc;
         });
         sanitizeType(this, [HTMLStyleElement], [], (el, staticHtml) => {
           if (staticHtml) return false;
           return true;
         });
-        sanitizeType(this, [HTMLPictureElement, HTMLImageElement, HTMLAudioElement, HTMLTrackElement, HTMLVideoElement, HTMLSourceElement], ['src', 'srcset', 'sizes', 'poster', 'autoplay', 'contorls', 'muted', 'loop', 'volume', 'loading'], el => {
-          return true;
-        });
+        sanitizeType(this, [HTMLPictureElement, HTMLImageElement, HTMLAudioElement, HTMLTrackElement, HTMLVideoElement, HTMLSourceElement], ['src', 'srcset', 'sizes', 'poster', 'autoplay', 'contorls', 'muted', 'loop', 'volume', 'loading'], el => true);
       }
 
       santizeAttribute(element, attName, attValue) {
@@ -70,11 +67,15 @@
         if (!allowed) return false;
         attName = attName.toLowerCase();
 
-        if (attName.match(regSystemAtt) || attName === 'skope') {
+        if (this.isAttributeForced(element, attName)) {
+          if (remove) {
+            return false;
+          }
+        } else if (attName.match(regSystemAtt) || attName === 'skope') {
           if (!preprocess) return false;
         } else if (/^on[a-z]+$/.test(attName)) {
           if (preprocess) {
-            element.setAttribute('@' + attName.slice(2), attValue);
+            element.setAttribute("@".concat(attName.slice(2)), attValue);
           }
 
           return false;
@@ -86,8 +87,6 @@
               if (!element.hasAttribute('@click')) {
                 element.setAttribute('@click', attValue.substring(isJs[0].length));
               }
-
-              element.setAttribute(attName, 'javascript:void(0)');
             } else {
               return false;
             }
@@ -98,16 +97,10 @@
           return false;
         } else if (!allowed.attributes.has(attName) && !globalAllowedAtttributes.has(attName)) {
           return false;
-        } else if (element instanceof HTMLInputElement && attName == 'type') {
+        } else if (element instanceof HTMLInputElement && attName === 'type') {
           return this.allowedInputs.has(attValue);
-        } else if (element instanceof HTMLButtonElement && attName == 'type') {
+        } else if (element instanceof HTMLButtonElement && attName === 'type') {
           return attValue === 'reset' || attValue === 'button';
-        } else if (remove && this.isAttributeForced(element, attName)) {
-          return false;
-        }
-
-        if (attName === 'slot') {
-          element.innerHTML = '';
         }
 
         return true;
@@ -122,16 +115,14 @@
           if (!allowed || !allowed.element(element, staticHtml)) {
             element.remove();
             return;
-          } else {
-            for (var att of [...element.attributes]) {
-              var _reservedAtrributes$g;
+          }
 
-              var attValue = att.nodeValue;
-              var attName = att.nodeName;
+          for (var att of [...element.attributes]) {
+            var attValue = att.nodeValue;
+            var attName = att.nodeName;
 
-              if (!((_reservedAtrributes$g = reservedAtrributes.get(element)) !== null && _reservedAtrributes$g !== void 0 && _reservedAtrributes$g.has(attName)) && (!this.santizeAttribute(element, attName, attValue, !staticHtml) || staticHtml && ["id", "style"].includes(attName))) {
-                element.removeAttribute(att.nodeName);
-              }
+            if (!this.santizeAttribute(element, attName, attValue, !staticHtml) || staticHtml && ['id', 'style'].includes(attName)) {
+              element.removeAttribute(att.nodeName);
             }
           }
         }
@@ -146,9 +137,9 @@
       }
 
       isAttributeForced(elem, att) {
-        var _reservedAtrributes$g2;
+        var _reservedAtrributes$g;
 
-        return (_reservedAtrributes$g2 = reservedAtrributes.get(elem)) === null || _reservedAtrributes$g2 === void 0 ? void 0 : _reservedAtrributes$g2.has(att);
+        return ((_reservedAtrributes$g = reservedAtrributes.get(elem)) === null || _reservedAtrributes$g === void 0 ? void 0 : _reservedAtrributes$g.has(att)) || regRservedSystemAtt.test(att) && elem.hasAttribute(att);
       }
 
       setAttributeForced(elem, att, value) {
@@ -178,43 +169,39 @@
           }
         };
 
-        var observeLoad = (elem, staticHtml) => {
-          return new Promise(resolve => {
-            sanitize(elem);
-            var observer = new MutationObserver(muts => {
-              for (var mut of muts) {
-                for (var target of mut.addedNodes) {
-                  if (target instanceof Element) {
-                    this.sanitizeHTML(target, staticHtml);
-                  }
+        var observeLoad = (elem, sHtml) => new Promise(resolve => {
+          sanitize(elem);
+          var observer = new MutationObserver(muts => {
+            for (var mut of muts) {
+              for (var target of mut.addedNodes) {
+                if (target instanceof Element) {
+                  this.sanitizeHTML(target, sHtml);
                 }
               }
-            });
-            document.addEventListener('readystatechange', () => {
-              if (document.readyState !== 'loading') {
-                setTimeout(() => {
-                  sub();
-                  resolve(elem);
-                });
-              }
-            });
-            observer.observe(elem, {
-              childList: true,
-              subtree: true
-            });
-
-            var sub = () => {
-              observer.disconnect();
-              subs.delete(sub);
-            };
-
-            subs.add(sub);
+            }
           });
-        };
+          document.addEventListener('readystatechange', () => {
+            if (document.readyState !== 'loading') {
+              setTimeout(() => {
+                sub();
+                resolve(elem);
+              });
+            }
+          });
+          observer.observe(elem, {
+            childList: true,
+            subtree: true
+          });
 
-        var matches = elem => {
-          return elem.matches(selector);
-        };
+          var sub = () => {
+            observer.disconnect();
+            subs.delete(sub);
+          };
+
+          subs.add(sub);
+        });
+
+        var matches = elem => elem.matches(selector);
 
         var loading = false;
 
@@ -242,8 +229,8 @@
                       for (var el of elem.querySelectorAll(selector)) {
                         if (!isFound(el)) {
                           found.add(el);
-                          observeLoad(el, staticHtml).then(el => {
-                            cb(el);
+                          observeLoad(el, staticHtml).then(ell => {
+                            cb(ell);
                           });
                         }
                       }
@@ -311,7 +298,8 @@
     var sanitizer = new HTMLSanitizer();
     var imps = ['./Skope.js'];
     var init = import(imps.pop()).then(mod => {
-      var skope = new mod.default({
+      var Skope = mod.default;
+      var skope = new Skope({
         sanitizer
       });
       return el => skope.init(el, undefined, true);
@@ -333,8 +321,8 @@
     globalThis.cancelSkope = function cancel() {
       canceled = true;
 
-      for (var _sub of subs) {
-        _sub();
+      for (var cb of subs) {
+        cb();
       }
 
       subs.length = 0;

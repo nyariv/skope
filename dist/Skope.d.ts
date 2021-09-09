@@ -1,10 +1,16 @@
 import Sandbox, { IExecContext } from '@nyariv/sandboxjs';
-import { wrapType, DelegateObject } from './eQuery';
-import { IElementCollection } from './eQuery';
+import { WrapType, DelegateObject, IElementCollection as IElemCollection } from './eQuery';
 import HTMLSanitizer from './HTMLSanitizer';
-export declare class Component {
+import { Subs } from './utils';
+export interface Component {
 }
-interface IElementScope {
+export interface IElementCollection extends IElemCollection {
+    html(): string;
+    html(content: string | Element | DocumentFragment | IElementCollection): IElemCollection;
+    text(): string;
+    text(set: string): IElementCollection;
+}
+export interface IElementScope {
     $el: IElementCollection;
     $dispatch(eventType: string, detail?: any, bubbles?: boolean, cancelable?: boolean): void;
     $watch(cb: () => any, callback: (val: any, lastVal: any) => void): {
@@ -12,14 +18,14 @@ interface IElementScope {
     };
     $delay(ms: number): Promise<void>;
 }
-interface IRootScope extends IElementScope {
+export interface IRootScope extends IElementScope {
     $templates: {
         [name: string]: HTMLTemplateElement;
     };
     $refs: {
         [name: string]: IElementCollection;
     };
-    $wrap(element: wrapType): IElementCollection;
+    $wrap(element: WrapType): IElementCollection;
 }
 export interface DirectiveExec {
     element: Element;
@@ -27,16 +33,18 @@ export interface DirectiveExec {
     directive: string;
     js: string;
     original: string;
-    subs: subs;
+    subs: Subs;
     delegate: DelegateObject;
 }
-export declare type sub = (() => void) | sub[];
-export declare type subs = sub[];
+export interface IDirectiveDefinition {
+    name: string;
+    callback: (exec: DirectiveExec, scopes: IElementScope[]) => Subs;
+}
 export default class Skope {
     components: any;
     sanitizer: HTMLSanitizer;
     directives: {
-        [name: string]: (exce: DirectiveExec, scopes: IElementScope[]) => subs;
+        [name: string]: (exec: DirectiveExec, scopes: IElementScope[]) => Subs;
     };
     globals: import("@nyariv/sandboxjs/dist/node/executor").IGlobals;
     prototypeWhitelist: Map<any, Set<string>>;
@@ -51,21 +59,24 @@ export default class Skope {
         };
     }>;
     ElementCollection: new (item?: number | Element, ...items: Element[]) => IElementCollection;
-    wrap: (selector: wrapType, context: IElementCollection | Document) => IElementCollection;
+    wrap: (selector: WrapType, context: IElementCollection | Document) => IElementCollection;
     defaultDelegateObject: DelegateObject;
     getStore: <T>(elem: Node, store: string, defaultValue?: T) => T;
     deleteStore: (elem: Element, store: string) => boolean;
     RootScope: new (el: Element) => IRootScope;
     ElementScope: new (el: Element) => IElementScope;
     styleIds: number;
+    calls: (() => void)[];
+    callTimer: any;
     constructor(options?: {
         sanitizer?: HTMLSanitizer;
         executionQuote?: bigint;
         allowRegExp?: boolean;
     });
+    call(cb: () => void): void;
     defineComponent(name: string, comp: Component): void;
     wrapElem(el: Element): IElementCollection;
-    watch<T>(elem: Node, toWatch: () => T, handler: (val: T, lastVal: T | undefined) => void | Promise<void>, errorCb?: (err: Error) => void): subs;
+    watch<T>(elem: Node, toWatch: () => T, handler: (val: T, lastVal: T | undefined) => void | Promise<void>, errorCb?: (err: Error) => void): Subs;
     exec(el: Node, code: string, scopes: IElementScope[]): {
         context: IExecContext;
         run: () => unknown;
@@ -74,9 +85,13 @@ export default class Skope {
         context: IExecContext;
         run: () => Promise<unknown>;
     };
-    defineDirective(name: string, callback: (exce: DirectiveExec, scopes: IElementScope[]) => subs): void;
+    defineDirective(exec: IDirectiveDefinition): void;
     init(elem?: Element, component?: string, alreadyPreprocessed?: boolean): {
         cancel: () => void;
     };
+    preprocessHTML(skope: Skope, parent: Element, html: DocumentFragment | Element | string): DocumentFragment | Element;
+    processHTML(skope: Skope, elem: Node, subs: Subs, delegate: DelegateObject, skipFirst?: boolean): {
+        elem: Node;
+        run: (scopes: IElementScope[]) => void;
+    };
 }
-export {};

@@ -1,11 +1,10 @@
-import HTMLSanitizer from "./HTMLSanitizer";
-declare type sortCallback = (a: Element, b: Element) => any;
-declare type search = (value?: Element, index?: number) => any;
+import HTMLSanitizer from './HTMLSanitizer';
+declare type SortCallback = (a: Element, b: Element) => any;
+declare type Search = (value?: Element, index?: number) => any;
 interface EqEventListener<T> {
     (evt: T & EqEvent): void;
 }
-interface EqEventListenerAny extends EqEventListener<any> {
-}
+declare type EqEventListenerAny = EqEventListener<any>;
 export interface DelegateObject {
     on<T extends Event>(elem: Element, event: string, callback: EqEventListener<T>): () => void;
     one<T extends Event>(elem: Element, event: string, callback: EqEventListener<T>): () => void;
@@ -22,19 +21,19 @@ export interface IElementCollection {
     [Symbol.iterator](): IterableIterator<Element>;
     forEach(cb: (elem?: Element, i?: number) => void): void;
     map<T>(cb: (elem?: Element, i?: number) => T): T[];
-    filter(selector: wrapType | ((elem?: Element, i?: number) => boolean)): IElementCollection;
+    filter(selector: WrapType | ((elem?: Element, i?: number) => boolean)): IElementCollection;
     some(cb: (elem: Element, i: number) => boolean): boolean;
     every(cb: (elem: Element, i: number) => boolean): boolean;
     slice(start?: number, end?: number): IElementCollection;
-    sort(callback?: sortCallback): this;
+    sort(callback?: SortCallback): this;
     reverse(): this;
     unique(): IElementCollection;
     toArray(): Element[];
     toSet(): Set<Element>;
-    is(selector: wrapType): boolean;
-    not(selector: wrapType): IElementCollection;
-    has(selector: wrapType): IElementCollection;
-    find(selector: wrapType | search): IElementCollection;
+    is(selector: WrapType): boolean;
+    not(selector: WrapType): IElementCollection;
+    has(selector: WrapType): IElementCollection;
+    find(selector: WrapType | Search): IElementCollection;
     on<T extends Event>(events: {
         [ev: string]: EqEventListener<T>;
     }, options?: AddEventListenerOptions): this;
@@ -72,7 +71,7 @@ export interface IElementCollection {
     hasClass(name: string): boolean;
     once(identifier: any): IElementCollection;
     get(index: number): Element;
-    index(selector?: wrapType): number;
+    index(selector?: WrapType): number;
     first(): IElementCollection;
     last(): IElementCollection;
     eq(index: number): IElementCollection;
@@ -85,15 +84,14 @@ export interface IElementCollection {
     siblings(selector?: string): IElementCollection;
     children(selector?: string): IElementCollection;
 }
-export declare type selector = Element | IElementCollection | Iterable<Element> | string;
-export declare type wrapType = selector | selector[];
+export declare type Selector = Element | IElementCollection | Iterable<Element> | string;
+export declare type WrapType = Selector | Selector[];
 export declare function ownerDoc(coll: IElementCollection): HTMLDocument | undefined;
-export declare function isIterable(x: unknown): x is Iterable<unknown>;
 export default function createClass(sanitizer: () => HTMLSanitizer): {
     getStore: <T>(elem: Node, store: string, defaultValue?: T) => T;
     deleteStore: (elem: Element, store: string) => boolean;
     ElementCollection: new (item?: number | Element, ...items: Element[]) => IElementCollection;
-    wrap: (selector: wrapType, context: IElementCollection | Document) => IElementCollection;
+    wrap: (selector: WrapType, context: IElementCollection | Document) => IElementCollection;
     defaultDelegateObject: DelegateObject;
 };
 export {};
