@@ -7,6 +7,7 @@
   "url": "https://github.com/nyariv/skope",
   "scripts": {
     "test": "echo \"no test specified\" && exit 0",
+    "prebuild": "eslint . --ext .js,.ts --fix",
     "build": "rollup -c"
   },
   "author": "",
@@ -23,10 +24,16 @@
     "@rollup/plugin-commonjs": "^20.0.0",
     "@rollup/plugin-node-resolve": "^13.0.4",
     "@rollup/plugin-typescript": "^8.2.5",
-    "rollup": "^2.56.2",
+    "@typescript-eslint/eslint-plugin": "^4.31.0",
+    "@typescript-eslint/parser": "^4.31.0",
+    "eslint": "^7.32.0",
+    "eslint-config-airbnb-base": "^14.2.1",
+    "eslint-config-airbnb-typescript": "^14.0.0",
+    "eslint-plugin-import": "^2.24.2",
+    "rollup": "^2.56.3",
     "rollup-plugin-copy-assets": "^2.0.3",
     "rollup-plugin-filesize": "^9.1.1",
     "tslib": "^1.14.1",
-    "typescript": "^4.3.5"
+    "typescript": "^4.4.2"
   }
 }
