@@ -7,7 +7,7 @@
   "url": "https://github.com/nyariv/skope",
   "scripts": {
     "test": "echo \"no test specified\" && exit 0",
-    "prebuild": "eslint . --ext .js,.ts --fix",
+    "prebuild": "eslint src --ext .js,.ts --fix",
     "build": "rollup -c"
   },
   "author": "",
