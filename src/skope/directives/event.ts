@@ -1,9 +1,9 @@
-import { DelegateObject, EqEvent } from '../eQuery';
+import { DelegateObject, EqEvent } from '../../eQuery';
 import { getRootElement, pushScope } from '../runtime/scope';
-import Skope, { IElementScope } from '../Skope';
-import { createError, regVarName, Subs } from '../utils';
+import type { ISkope, IElementScope } from '../../Skope';
+import { createError, regVarName, Subs } from '../../utils';
 
-export default function eventDirective(skope: Skope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject) {
+export default function eventDirective(skope: ISkope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject) {
   const transitionParts = att.nodeName.split('$');
   const parts = transitionParts[0].slice(1).split('.');
   const debouce = /^debounce(\((\d+)\))?$/.exec(parts[1] || '');

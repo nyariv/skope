@@ -1,10 +1,12 @@
 import { watchRun } from '../runtime/watch';
-import Skope, { DirectiveExec, IDirectiveDefinition, IElementScope } from '../Skope';
+import type {
+  ISkope, IDirectiveExec, IDirectiveDefinition, IElementScope,
+} from '../../Skope';
 
-export default function transitionDirective(skope: Skope): IDirectiveDefinition {
+export default function transitionDirective(skope: ISkope): IDirectiveDefinition {
   return {
     name: 'transition',
-    callback: (exec: DirectiveExec, scopes: IElementScope[]) => {
+    callback: (exec: IDirectiveExec, scopes: IElementScope[]) => {
       const $el = skope.wrapElem(exec.element);
       $el.addClass('s-transition');
       $el.addClass('s-transition-idle');

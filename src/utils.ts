@@ -1,6 +1,6 @@
 import { IExecContext } from '@nyariv/sandboxjs';
 import { Change } from '@nyariv/sandboxjs/dist/node/executor';
-import Skope, { IElementScope, IRootScope } from './Skope';
+import type { ISkope, IElementScope, IRootScope } from './Skope';
 
 export const regVarName = /^\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*$/;
 export const regKeyValName = /^\s*\(([a-zA-Z$_][a-zA-Z$_\d]*)\s*,\s*([a-zA-Z$_][a-zA-Z$_\d]*)\s*\)$/;
@@ -16,7 +16,7 @@ export function isIterable(x: unknown): x is Iterable<unknown> {
 export type Sub = (() => void) | Sub[];
 export type Subs = Sub[];
 
-interface IVarSubs {
+export interface IVarSubs {
   subscribeGet?: (callback: (obj: Record<string, unknown>, name: string) => void) => {
     unsubscribe: () => void;
   };
@@ -25,9 +25,7 @@ interface IVarSubs {
   }
 }
 
-export const varSubsStore: WeakMap<() => unknown | Promise<unknown>, IVarSubs> = new WeakMap();
-
-export function createVarSubs(skope: Skope, context: IExecContext) {
+export function createVarSubs(skope: ISkope, context: IExecContext) {
   const varSubs: IVarSubs = {};
   varSubs.subscribeGet = (callback: (obj: Record<string, unknown>, name: string) => void) => skope.sandbox.subscribeGet(callback, context);
   varSubs.subscribeSet = (obj: Record<string, unknown>, name: string, callback: (modification: Change) => void) => skope.sandbox.subscribeSet(obj, name, callback, context);
@@ -58,6 +56,14 @@ export function createErrorCb(el: Node) {
 export function createError(msg: string, el: Node) {
   const err = new Error(msg);
   (err as any).element = el;
-  console.error(err, el);
+  errorCb(err, el);
   return err;
 }
+
+export function changeErrorCb(cb: (err: Error, el: Node) => void) {
+  errorCb = cb;
+}
+
+let errorCb = (err: Error, el: Node) => {
+  console.error(err, el);
+};

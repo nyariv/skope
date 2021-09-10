@@ -1,26 +1,26 @@
 import { getRootElement } from './scope';
-import Skope, { IElementScope } from '../Skope';
+import type { ISkope, IElementScope } from '../../Skope';
 import {
-  createError, createVarSubs, Subs, unsubNested, varSubsStore,
-} from '../utils';
+  createError, createVarSubs, Subs, unsubNested,
+} from '../../utils';
 
-export function watchRun(skope: Skope, el: Node, scopes: IElementScope[], code: string): () => unknown {
+export function watchRun(skope: ISkope, el: Node, scopes: IElementScope[], code: string): () => unknown {
   try {
     const exec = skope.exec(getRootElement(skope, scopes), `return ${code}`, scopes);
-    varSubsStore.set(exec.run, createVarSubs(skope, exec.context));
+    skope.varSubsStore.set(exec.run, createVarSubs(skope, exec.context));
     return exec.run;
   } catch (err) {
     createError(err.message, el);
     const r = () => {};
-    varSubsStore.set(r, { subscribeGet() { return { unsubscribe() {} }; }, subscribeSet() { return { unsubscribe() {} }; } });
+    skope.varSubsStore.set(r, { subscribeGet() { return { unsubscribe() {} }; }, subscribeSet() { return { unsubscribe() {} }; } });
     return r;
   }
 }
 
-export function watch<T>(skope: Skope, elem: Node, toWatch: () => T, handler: (val: T, lastVal: T | undefined) => void | Promise<void>, errorCb?: (err: Error) => void): Subs {
+export function watch<T>(skope: ISkope, elem: Node, toWatch: () => T, handler: (val: T, lastVal: T | undefined) => void | Promise<void>, errorCb?: (err: Error) => void): Subs {
   const watchGets: Map<any, Set<string>> = new Map();
   const subUnsubs: Subs = [];
-  let varSubs = varSubsStore.get(toWatch);
+  let varSubs = skope.varSubsStore.get(toWatch);
   if (!varSubs) {
     const context = skope.sandbox.getContext(toWatch);
     if (!context) {

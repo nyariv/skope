@@ -1,15 +1,16 @@
-import createClass, { WrapType } from '../eQuery';
+import createClass, { WrapType } from '../../eQuery';
 import { getScopes } from './scope';
 import registerTemplates from '../parser/template';
-import Skope, {
+import type {
+  ISkope,
   IDirectiveDefinition, IElementCollection, IElementScope, IRootScope,
-} from '../Skope';
-import { Subs, unsubNested } from '../utils';
+} from '../../Skope';
+import { Subs, unsubNested } from '../../utils';
 import directivesCollection from '../directives/_index';
 import createElementScopeClass from './ElementScope';
 import createRootScopeClass from './RootScope';
 
-export default function initialize(skope: Skope) {
+export default function initialize(skope: ISkope) {
   const eQuery = createClass(() => skope.sanitizer);
   const {
     wrap, ElementCollection, getStore, deleteStore, defaultDelegateObject,

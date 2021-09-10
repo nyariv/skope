@@ -1,11 +1,11 @@
-import { DelegateObject } from '../eQuery';
+import { DelegateObject } from '../../eQuery';
 import { getRootElement, pushScope } from '../runtime/scope';
-import Skope, { IElementScope } from '../Skope';
+import type { ISkope, IElementScope } from '../../Skope';
 import {
   createError, createErrorCb, regVarName, Subs,
-} from '../utils';
+} from '../../utils';
 
-export default function variableDirective(skope: Skope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject, flags: { elementScopeAdded: boolean }) {
+export default function variableDirective(skope: ISkope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject, flags: { elementScopeAdded: boolean }) {
   const name = att.nodeName.substring(1).replace(/-([\w$])/g, (match, letter) => letter.toUpperCase());
   if (!name.match(regVarName)) {
     createError('Invalid variable name in attribute', att);

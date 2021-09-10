@@ -17,7 +17,6 @@ module.exports = {
 @typescript-eslint/explicit-module-boundary-types
 @typescript-eslint/no-empty-function
 no-cond-assign
-import/no-cycle
 no-param-reassign
 no-return-assign
 no-plusplus

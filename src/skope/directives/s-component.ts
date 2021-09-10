@@ -1,15 +1,17 @@
 import { getRootScope, pushScope } from '../runtime/scope';
-import Skope, { DirectiveExec, IDirectiveDefinition, IElementScope } from '../Skope';
-import { createError, Subs } from '../utils';
+import type {
+  ISkope, IDirectiveExec, IDirectiveDefinition, IElementScope,
+} from '../../Skope';
+import { createError, Subs } from '../../utils';
 
 const ddd = document.createElement('div');
 ddd.innerHTML = '<span $$templates="$templates"><span>';
 const $$templatesAttr = ddd.querySelector('span').attributes.item(0);
 
-export default function componentDirective(skope: Skope): IDirectiveDefinition {
+export default function componentDirective(skope: ISkope): IDirectiveDefinition {
   return {
     name: 'component',
-    callback: (exec: DirectiveExec, scopes: IElementScope[]) => {
+    callback: (exec: IDirectiveExec, scopes: IElementScope[]) => {
       const template = getRootScope(skope, scopes)?.$templates[exec.att.nodeValue];
       if (!(template instanceof HTMLTemplateElement)) {
         createError('Template not found', exec.att);

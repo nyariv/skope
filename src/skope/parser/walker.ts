@@ -1,14 +1,26 @@
-import { DelegateObject } from '../eQuery';
+import { DelegateObject } from '../../eQuery';
 import { watchRun } from '../runtime/watch';
-import Skope, { DirectiveExec, IElementScope } from '../Skope';
-import { createError, Subs } from '../utils';
-import { getRootElement, pushScope } from '../runtime/scope';
+import type { ISkope, IElementScope, IDirectiveExec } from '../../Skope';
+import { createError, Subs } from '../../utils';
+import { pushScope } from '../runtime/scope';
 import eventDirective from '../directives/event';
 import ifDirective from '../directives/if';
 import forDirective from '../directives/for';
 import variableDirective from '../directives/variable';
 import detachedDirective from '../directives/detached';
 import attributeDirective from '../directives/attribute';
+import styleElement from '../elements/style';
+import scriptElement from '../elements/script';
+import iframetElement from '../elements/ifame';
+
+function runDirective(skope: ISkope, exec: IDirectiveExec, scopes: IElementScope[]) {
+  const dir = skope.directives[exec.directive];
+  if (dir) {
+    return dir(exec, scopes);
+  }
+  createError('Unknown directive', exec.att);
+  return [];
+}
 
 export function walkerInstance() {
   const execSteps: ((scopes: IElementScope[]) => void)[] = [];
@@ -19,14 +31,6 @@ export function walkerInstance() {
       execSteps.length = 0;
     },
   };
-}
-
-function runDirective(skope: Skope, exec: DirectiveExec, scopes: IElementScope[]) {
-  const dir = skope.directives[exec.directive];
-  if (dir) {
-    return dir(exec, scopes);
-  }
-  return [];
 }
 
 const closings: any = {
@@ -90,7 +94,7 @@ export function walkText(s: string, endJs: string = null) {
   return strings.filter(Boolean);
 }
 
-export function walkTree(skope: Skope, element: Node, parentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject, skipFirst: boolean) {
+export function walkTree(skope: ISkope, element: Node, parentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject, skipFirst: boolean) {
   const currentSubs: Subs = [];
   parentSubs.push(currentSubs);
   const walkNested = () => {
@@ -143,36 +147,11 @@ export function walkTree(skope: Skope, element: Node, parentSubs: Subs, ready: (
       return;
     }
     if (element instanceof HTMLStyleElement) {
-      const loaded = () => {
-        const parent = element.parentElement;
-        if (!parent) return;
-        if (!skope.sanitizer.isAttributeForced(parent, 'skope-style')) {
-          parent.removeAttribute('skope-style');
-        }
-        const id = parent.getAttribute('skope-style') || ++skope.styleIds;
-        skope.sanitizer.setAttributeForced(parent, 'skope-style', `${id}`);
-        let i = element.sheet.cssRules.length - 1;
-        for (const rule of [...element.sheet.cssRules].reverse()) {
-          if (!(rule instanceof CSSStyleRule || rule instanceof CSSKeyframesRule)) {
-            element.sheet.deleteRule(i);
-          }
-          i--;
-        }
-        i = 0;
-        for (const rule of [...element.sheet.cssRules]) {
-          if (rule instanceof CSSStyleRule) {
-            const { cssText } = rule.style;
-            element.sheet.deleteRule(i);
-            element.sheet.insertRule(`[skope-style="${id}"] :is(${rule.selectorText}) { ${cssText} }`, i);
-          }
-          i++;
-        }
-      };
-      if (element.sheet && element.parentElement) {
-        loaded();
-      } else {
-        element.addEventListener('load', loaded);
-      }
+      styleElement(skope, element);
+      return;
+    }
+    if (element instanceof HTMLScriptElement) {
+      scriptElement(skope, element, ready);
       return;
     }
     skope.getStore(element, 'currentSubs', parentSubs);
@@ -213,31 +192,7 @@ export function walkTree(skope: Skope, element: Node, parentSubs: Subs, ready: (
       ready = detachedDirective(skope, element, element.getAttributeNode('s-detached'), currentSubs, ready, delegate, flags);
     }
     if (element instanceof HTMLIFrameElement && element.hasAttribute('skope-iframe-content')) {
-      ready(() => {
-        const exec = () => {
-          skope.wrapElem(element).html(element.getAttribute('skope-iframe-content'));
-          element.removeAttribute('skope-iframe-content');
-        };
-        if (element.contentDocument.readyState !== 'complete') {
-          element.addEventListener('load', exec);
-        } else {
-          exec();
-        }
-      });
-    }
-    if (element instanceof HTMLScriptElement) {
-      if (element.type === 'skopejs') {
-        ready((scopes) => {
-          try {
-            skope.exec(getRootElement(skope, scopes), element.innerHTML, scopes).run();
-          } catch (err) {
-            createError(err?.message, element);
-          }
-        });
-      } else {
-        element.remove();
-      }
-      return;
+      iframetElement(skope, element, ready);
     }
     for (const att of element.attributes) {
       if (att.nodeName.startsWith(':')) {

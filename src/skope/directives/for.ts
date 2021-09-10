@@ -1,11 +1,11 @@
 import { pushScope } from '../runtime/scope';
 import { watchRun } from '../runtime/watch';
-import Skope, { IElementScope } from '../Skope';
+import type { ISkope, IElementScope } from '../../Skope';
 import {
   createError, isIterable, isObject, regKeyValName, regVarName, Subs, unsubNested,
-} from '../utils';
+} from '../../utils';
 
-export default function forDirective(skope: Skope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void) {
+export default function forDirective(skope: ISkope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void) {
   const comment = document.createComment('s-for');
   element.after(comment);
   element.remove();

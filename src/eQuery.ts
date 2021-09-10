@@ -1,4 +1,4 @@
-import HTMLSanitizer from './HTMLSanitizer';
+import { IHTMLSanitizer } from './HTMLSanitizer';
 import { isIterable } from './utils';
 
 // @ts-check
@@ -114,7 +114,7 @@ export function ownerDoc(coll: IElementCollection): HTMLDocument | undefined {
   return coll.get(0)?.ownerDocument;
 }
 
-export default function createClass(sanitizer: () => HTMLSanitizer): {
+export default function createClass(sanitizer: () => IHTMLSanitizer): {
   getStore: <T>(elem: Node, store: string, defaultValue?: T) => T,
   deleteStore: (elem: Element, store: string) => boolean,
   ElementCollection: new (item?: number | Element, ...items: Element[]) => IElementCollection,

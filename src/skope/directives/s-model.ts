@@ -1,12 +1,12 @@
 import { getRootElement, pushScope } from '../runtime/scope';
 import { watchRun } from '../runtime/watch';
-import Skope, { DirectiveExec, IElementScope } from '../Skope';
-import { createError, Subs } from '../utils';
+import type { ISkope, IDirectiveExec, IElementScope } from '../../Skope';
+import { createError, Subs } from '../../utils';
 
-export default function modelDirective(skope: Skope) {
+export default function modelDirective(skope: ISkope) {
   return {
     name: 'model',
-    callback: (exec: DirectiveExec, scopes: IElementScope[]) => {
+    callback: (exec: IDirectiveExec, scopes: IElementScope[]) => {
       const el: any = exec.element;
       const isContentEditable = (el instanceof HTMLElement && (el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === ''));
       const $el: any = skope.wrapElem(el);

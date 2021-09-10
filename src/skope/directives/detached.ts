@@ -1,9 +1,9 @@
-import { DelegateObject } from '../eQuery';
+import { DelegateObject } from '../../eQuery';
 import { getScope } from '../runtime/scope';
-import Skope, { IElementScope, IRootScope } from '../Skope';
-import { Subs } from '../utils';
+import type { ISkope, IElementScope, IRootScope } from '../../Skope';
+import { Subs } from '../../utils';
 
-export default function detachedDirective(skope: Skope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject, flags: { elementScopeAdded: boolean }) {
+export default function detachedDirective(skope: ISkope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject, flags: { elementScopeAdded: boolean }) {
   let nestedScopes: [IRootScope, IElementScope?];
   const execSteps: ((scopes: IElementScope[]) => void)[] = [];
   ready((scopes) => {

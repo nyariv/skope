@@ -1,7 +1,7 @@
-import Skope, { IElementScope, IRootScope } from '../Skope';
-import { Subs } from '../utils';
+import type { ISkope, IElementScope, IRootScope } from '../../Skope';
+import { Subs } from '../../utils';
 
-export function getRootScope(skope: Skope, scopes: IElementScope[]): IRootScope | undefined {
+export function getRootScope(skope: ISkope, scopes: IElementScope[]): IRootScope | undefined {
   for (let i = scopes.length - 1; i >= 0; i--) {
     if (scopes[i] instanceof skope.RootScope) {
       return scopes[i] as IRootScope;
@@ -10,11 +10,11 @@ export function getRootScope(skope: Skope, scopes: IElementScope[]): IRootScope 
   return undefined;
 }
 
-export function getRootElement(skope: Skope, scopes: IElementScope[]): Element {
+export function getRootElement(skope: ISkope, scopes: IElementScope[]): Element {
   return getRootScope(skope, scopes)?.$el.get(0);
 }
 
-export function getScope(skope: Skope, element: Element, subs: Subs, vars: { [variable: string]: any } = {}, root?: boolean): IElementScope | IRootScope {
+export function getScope(skope: ISkope, element: Element, subs: Subs, vars: { [variable: string]: any } = {}, root?: boolean): IElementScope | IRootScope {
   let scope = skope.getStore<IElementScope>(element, 'scope');
   if (root) {
     scope = skope.getStore<IElementScope>(element, 'rootScope');
@@ -38,7 +38,7 @@ export function getScope(skope: Skope, element: Element, subs: Subs, vars: { [va
   return scope;
 }
 
-export function getScopes(skope: Skope, element: Element, subs: Subs = [], newScope?: { [variable: string]: any }): IElementScope[] {
+export function getScopes(skope: ISkope, element: Element, subs: Subs = [], newScope?: { [variable: string]: any }): IElementScope[] {
   if (!element) return [];
   const scope = newScope === undefined ? skope.getStore<IElementScope>(element, 'scope') : getScope(skope, element, subs, newScope);
   const scopes: IElementScope[] = skope.getStore<IElementScope[]>(element, 'scopes') || [];
@@ -49,7 +49,7 @@ export function getScopes(skope: Skope, element: Element, subs: Subs = [], newSc
   return [...(element.hasAttribute('s-detached') ? [] : getScopes(skope, element.parentElement)), ...scopes];
 }
 
-export function pushScope(skope: Skope, scopes: IElementScope[], elem: Element, sub: Subs, vars?: any) {
+export function pushScope(skope: ISkope, scopes: IElementScope[], elem: Element, sub: Subs, vars?: any) {
   const scope = getScope(skope, elem, sub, vars);
   if (scope === scopes[scopes.length - 1]) return [...scopes];
   return [...scopes, scope];

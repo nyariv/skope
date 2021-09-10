@@ -1,7 +1,7 @@
 const regHrefJS = /^\s*javascript\s*:/i;
 const regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
 const regSystemAtt = /^(:|@|\$|s-)/;
-const regRservedSystemAtt = /^skope-/;
+const regReservedSystemAtt = /^skope-/;
 const defaultHTMLWhiteList: (new () => Element)[] = [
   HTMLBRElement,
   HTMLBodyElement,
@@ -70,7 +70,23 @@ export function sanitizeType(obj: HTMLSanitizer, t: (new () => Element)[], allow
 
 const reservedAtrributes: WeakMap<Element, Set<string>> = new WeakMap();
 
-export default class HTMLSanitizer {
+export interface IHTMLSanitizer {
+  types: Map<new () => Element, {
+    attributes: Set<string>;
+    element: (el: Element, staticHtml: boolean) => boolean | void;
+  }>;
+  srcAttributes: Set<string>;
+  allowedInputs: Set<string>;
+  santizeAttribute(element: Element, attName: string, attValue: string, preprocess?: boolean, remove?: boolean): boolean;
+  sanitizeHTML(element: Element | DocumentFragment, staticHtml?: boolean): void;
+  isAttributeForced(elem: Element, att: string): boolean;
+  setAttributeForced(elem: Element, att: string, value: string): void;
+  observeAttribute(parent: Element, att: string, cb: (elem: Element) => void, staticHtml: boolean, persistant?: boolean): {
+    cancel: () => void;
+  };
+}
+
+export default class HTMLSanitizer implements IHTMLSanitizer {
   types: Map<new () => Element, { attributes: Set<string>, element: (el: Element, staticHtml: boolean) => boolean | void }> = new Map();
 
   srcAttributes = new Set(['action', 'href', 'xlink:href', 'formaction', 'manifest', 'poster', 'src', 'from']);
@@ -248,7 +264,7 @@ export default class HTMLSanitizer {
   }
 
   isAttributeForced(elem: Element, att: string) {
-    return reservedAtrributes.get(elem)?.has(att) || (regRservedSystemAtt.test(att) && elem.hasAttribute(att));
+    return reservedAtrributes.get(elem)?.has(att) || (regReservedSystemAtt.test(att) && elem.hasAttribute(att));
   }
 
   setAttributeForced(elem: Element, att: string, value: string) {

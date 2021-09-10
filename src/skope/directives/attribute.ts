@@ -1,9 +1,9 @@
-import { DelegateObject } from '../eQuery';
+import { DelegateObject } from '../../eQuery';
 import { watchRun } from '../runtime/watch';
-import Skope, { IElementScope } from '../Skope';
-import { Subs } from '../utils';
+import type { ISkope, IElementScope } from '../../Skope';
+import { Subs } from '../../utils';
 
-export default function attributeDirective(skope: Skope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject) {
+export default function attributeDirective(skope: ISkope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject) {
   const at = att.nodeName.slice(1);
   const parts = at.split('.');
   ready((scopes) => {

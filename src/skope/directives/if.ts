@@ -1,10 +1,10 @@
-import { DelegateObject } from '../eQuery';
+import { DelegateObject } from '../../eQuery';
 import { pushScope } from '../runtime/scope';
 import { watchRun } from '../runtime/watch';
-import Skope, { IElementScope } from '../Skope';
-import { createError, Subs, unsubNested } from '../utils';
+import type { ISkope, IElementScope } from '../../Skope';
+import { createError, Subs, unsubNested } from '../../utils';
 
-export default function ifDirective(skope: Skope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject) {
+export default function ifDirective(skope: ISkope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject) {
   const comment = document.createComment('s-if');
   let ifElem: Element;
   const at = element.getAttribute('s-if');

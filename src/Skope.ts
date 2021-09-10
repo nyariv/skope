@@ -2,13 +2,13 @@
 
 import Sandbox, { IExecContext } from '@nyariv/sandboxjs';
 import { WrapType, DelegateObject, IElementCollection as IElemCollection } from './eQuery';
-import HTMLSanitizer from './HTMLSanitizer';
-import { Subs, unsubNested } from './utils';
-import { walkerInstance, walkTree } from './parser/walker';
-import initialize from './runtime/initialize';
-import { getScope } from './runtime/scope';
-import registerTemplates from './parser/template';
-import { watch } from './runtime/watch';
+import HTMLSanitizer, { IHTMLSanitizer } from './HTMLSanitizer';
+import { IVarSubs, Subs, unsubNested } from './utils';
+import { walkerInstance, walkTree } from './skope/parser/walker';
+import initialize from './skope/runtime/initialize';
+import { getScope } from './skope/runtime/scope';
+import registerTemplates from './skope/parser/template';
+import { watch } from './skope/runtime/watch';
 
 export interface Component {}
 
@@ -31,7 +31,7 @@ export interface IRootScope extends IElementScope {
   $wrap(element: WrapType): IElementCollection;
 }
 
-export interface DirectiveExec {
+export interface IDirectiveExec {
   element: Element,
   att: Node,
   directive: string,
@@ -43,15 +43,67 @@ export interface DirectiveExec {
 
 export interface IDirectiveDefinition {
   name: string;
-  callback: (exec: DirectiveExec, scopes: IElementScope[]) => Subs
+  callback: (exec: IDirectiveExec, scopes: IElementScope[]) => Subs
 }
 
-export default class Skope {
+export interface ISkope {
+  components: any;
+  sanitizer: IHTMLSanitizer;
+  directives: {
+    [name: string]: (exec: IDirectiveExec, scopes: IElementScope[]) => Subs;
+  };
+  globals: import('@nyariv/sandboxjs/dist/node/executor').IGlobals;
+  prototypeWhitelist: Map<any, Set<string>>;
+  sandbox: Sandbox;
+  sandboxCache: WeakMap<Node, {
+    [code: string]: (...scopes: (any)[]) => {
+      context: IExecContext;
+      run: () => unknown;
+    } | {
+      context: IExecContext;
+      run: () => Promise<unknown>;
+    };
+  }>;
+  ElementCollection: new (item?: number | Element, ...items: Element[]) => IElementCollection;
+  wrap: (selector: WrapType, context: IElementCollection | Document) => IElementCollection;
+  defaultDelegateObject: DelegateObject;
+  getStore: <T>(elem: Node, store: string, defaultValue?: T) => T;
+  deleteStore: (elem: Element, store: string) => boolean;
+  RootScope: new (el: Element) => IRootScope;
+  ElementScope: new (el: Element) => IElementScope;
+  styleIds: number;
+  calls: (() => void)[];
+  callTimer: any;
+  varSubsStore: WeakMap<() => unknown | Promise<unknown>, IVarSubs>;
+  call(cb: () => void): void;
+  defineComponent(name: string, comp: Component): void;
+  wrapElem(el: Element): IElementCollection;
+  watch<T>(elem: Node, toWatch: () => T, handler: (val: T, lastVal: T | undefined) => void | Promise<void>, errorCb?: (err: Error) => void): Subs;
+  exec(el: Node, code: string, scopes: IElementScope[]): {
+    context: IExecContext;
+    run: () => unknown;
+  };
+  execAsync(el: Node, code: string, scopes: IElementScope[]): {
+    context: IExecContext;
+    run: () => Promise<unknown>;
+  };
+  defineDirective(exec: IDirectiveDefinition): void;
+  init(elem?: Element, component?: string, alreadyPreprocessed?: boolean): {
+    cancel: () => void;
+  };
+  preprocessHTML(skope: ISkope, parent: Element, html: DocumentFragment | Element | string): DocumentFragment | Element;
+  processHTML(skope: ISkope, elem: Node, subs: Subs, delegate: DelegateObject, skipFirst?: boolean): {
+    elem: Node;
+    run: (scopes: IElementScope[]) => void;
+  };
+}
+
+export default class Skope implements ISkope {
   components: any = {};
 
-  sanitizer: HTMLSanitizer;
+  sanitizer: IHTMLSanitizer;
 
-  directives: { [name: string]: (exec: DirectiveExec, scopes: IElementScope[]) => Subs } = {};
+  directives: { [name: string]: (exec: IDirectiveExec, scopes: IElementScope[]) => Subs } = {};
 
   globals = Sandbox.SAFE_GLOBALS;
 
@@ -87,7 +139,9 @@ export default class Skope {
 
   callTimer: any;
 
-  constructor(options?: { sanitizer?: HTMLSanitizer, executionQuote?: bigint, allowRegExp?: boolean }) {
+  varSubsStore: WeakMap<() => unknown | Promise<unknown>, IVarSubs> = new WeakMap();
+
+  constructor(options?: { sanitizer?: IHTMLSanitizer, executionQuote?: bigint, allowRegExp?: boolean }) {
     this.sanitizer = options?.sanitizer || new HTMLSanitizer();
     delete this.globals.Function;
     delete this.globals.eval;
@@ -192,7 +246,7 @@ export default class Skope {
     };
   }
 
-  preprocessHTML(skope: Skope, parent: Element, html: DocumentFragment | Element | string): DocumentFragment | Element {
+  preprocessHTML(skope: ISkope, parent: Element, html: DocumentFragment | Element | string): DocumentFragment | Element {
     let elem: DocumentFragment | Element;
     if (typeof html === 'string') {
       const template = document.createElement('template');
@@ -214,7 +268,7 @@ export default class Skope {
     return elem;
   }
 
-  processHTML(skope: Skope, elem: Node, subs: Subs, delegate: DelegateObject, skipFirst = false) {
+  processHTML(skope: ISkope, elem: Node, subs: Subs, delegate: DelegateObject, skipFirst = false) {
     const exec = walkerInstance();
     walkTree(skope, elem, subs, exec.ready, delegate, skipFirst);
     return {

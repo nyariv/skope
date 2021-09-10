@@ -1,8 +1,8 @@
-import Skope, { IElementCollection, IElementScope } from '../Skope';
-import { unsubNested } from '../utils';
-import { IElementCollection as IElemCollection, WrapType } from '../eQuery';
+import type { ISkope, IElementCollection, IElementScope } from '../../Skope';
+import { unsubNested } from '../../utils';
+import { IElementCollection as IElemCollection, WrapType } from '../../eQuery';
 
-export default function createElementScopeClass(skope: Skope,
+export default function createElementScopeClass(skope: ISkope,
   wrap: (selector: WrapType, context: IElemCollection | Document) => IElemCollection,
   getStore: <T>(elem: Node, store: string, defaultValue?: T) => T) {
   const ElementScope = class implements IElementScope {

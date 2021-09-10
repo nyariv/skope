@@ -3,8 +3,8 @@ import HTMLSanitizer from './HTMLSanitizer';
 const sanitizer = new HTMLSanitizer();
 const imps = ['./Skope.js'];
 const init = import(imps.pop()).then((mod) => {
-  const Skope = mod.default; // eslint-disable-line
-  const skope = new Skope({ sanitizer });
+  const ISkope = mod.default; // eslint-disable-line
+  const skope = new ISkope({ sanitizer });
   return (el: Element) => skope.init(el, undefined, true);
 });
 

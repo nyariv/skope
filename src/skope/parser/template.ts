@@ -1,8 +1,8 @@
-import Skope, { IElementScope } from '../Skope';
-import { createError } from '../utils';
+import type { ISkope, IElementScope } from '../../Skope';
+import { createError } from '../../utils';
 import { getRootScope } from '../runtime/scope';
 
-export default function registerTemplates(skope: Skope, elem: DocumentFragment | Element, scopes: IElementScope[]) {
+export default function registerTemplates(skope: ISkope, elem: DocumentFragment | Element, scopes: IElementScope[]) {
   const root = getRootScope(skope, scopes);
   if (!root) return;
   const recurse = (el: Element | DocumentFragment) => {

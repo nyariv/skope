@@ -1,11 +1,11 @@
 import { getScope } from '../runtime/scope';
-import Skope, { DirectiveExec, IElementScope } from '../Skope';
-import { createError, regVarName } from '../utils';
+import type { ISkope, IDirectiveExec, IElementScope } from '../../Skope';
+import { createError, regVarName } from '../../utils';
 
-export default function refDirective(skope: Skope) {
+export default function refDirective(skope: ISkope) {
   return {
     name: 'ref',
-    callback: (exec: DirectiveExec, scopes: IElementScope[]) => {
+    callback: (exec: IDirectiveExec, scopes: IElementScope[]) => {
       if (!exec.js.match(regVarName)) {
         throw createError(`Invalid ref name: ${exec.js}`, exec.element);
       }
