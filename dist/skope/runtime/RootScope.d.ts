@@ -1,6 +1,6 @@
-import Skope, { IElementCollection, IElementScope } from '../Skope';
-import { IElementCollection as IElemCollection, WrapType } from '../eQuery';
-export default function createRootScopeClass(skope: Skope, wrap: (selector: WrapType, context: IElemCollection | Document) => IElemCollection, ElementScope: new (el: Element) => IElementScope): {
+import type { ISkope, IElementCollection, IElementScope } from '../../Skope';
+import { IElementCollection as IElemCollection, WrapType } from '../../eQuery';
+export default function createRootScopeClass(skope: ISkope, wrap: (selector: WrapType, context: IElemCollection | Document) => IElemCollection, ElementScope: new (el: Element) => IElementScope): {
     new (el: Element): {
         $templates: {
             [name: string]: HTMLTemplateElement;

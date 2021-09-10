@@ -4,7 +4,7 @@
     var regHrefJS = /^\s*javascript\s*:/i;
     var regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
     var regSystemAtt = /^(:|@|\$|s-)/;
-    var regRservedSystemAtt = /^skope-/;
+    var regReservedSystemAtt = /^skope-/;
     var defaultHTMLWhiteList = [HTMLBRElement, HTMLBodyElement, HTMLDListElement, HTMLDataElement, HTMLDataListElement, HTMLDivElement, HTMLFieldSetElement, HTMLFormElement, HTMLHRElement, HTMLHeadingElement, HTMLLIElement, HTMLLegendElement, HTMLMapElement, HTMLMetaElement, HTMLMeterElement, HTMLModElement, HTMLOListElement, HTMLOutputElement, HTMLParagraphElement, HTMLPreElement, HTMLProgressElement, HTMLQuoteElement, HTMLSpanElement, HTMLTableCaptionElement, HTMLTableCellElement, HTMLTableColElement, HTMLTableElement, HTMLTableSectionElement, HTMLTableRowElement, HTMLTimeElement, HTMLTitleElement, HTMLUListElement, HTMLUnknownElement, HTMLTemplateElement, HTMLCanvasElement, HTMLElement];
     var globalAllowedAtttributes = new Set(['id', 'class', 'style', 'alt', 'role', 'aria-label', 'aria-labelledby', 'aria-hidden', 'tabindex', 'title', 'dir', 'lang', 'height', 'width', 'slot']);
     function sanitizeType(obj, t, allowedAttributes, element) {
@@ -139,7 +139,7 @@
       isAttributeForced(elem, att) {
         var _reservedAtrributes$g;
 
-        return ((_reservedAtrributes$g = reservedAtrributes.get(elem)) === null || _reservedAtrributes$g === void 0 ? void 0 : _reservedAtrributes$g.has(att)) || regRservedSystemAtt.test(att) && elem.hasAttribute(att);
+        return ((_reservedAtrributes$g = reservedAtrributes.get(elem)) === null || _reservedAtrributes$g === void 0 ? void 0 : _reservedAtrributes$g.has(att)) || regReservedSystemAtt.test(att) && elem.hasAttribute(att);
       }
 
       setAttributeForced(elem, att, value) {
@@ -298,8 +298,8 @@
     var sanitizer = new HTMLSanitizer();
     var imps = ['./Skope.js'];
     var init = import(imps.pop()).then(mod => {
-      var Skope = mod.default;
-      var skope = new Skope({
+      var ISkope = mod.default;
+      var skope = new ISkope({
         sanitizer
       });
       return el => skope.init(el, undefined, true);

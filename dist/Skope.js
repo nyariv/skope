@@ -3390,7 +3390,7 @@ var Sandbox = /*@__PURE__*/getDefaultExportFromCjs(Sandbox$1);
 var regHrefJS = /^\s*javascript\s*:/i;
 var regValidSrc = /^((https?:)?\/\/|\.?\/|#)/;
 var regSystemAtt = /^(:|@|\$|s-)/;
-var regRservedSystemAtt = /^skope-/;
+var regReservedSystemAtt = /^skope-/;
 var defaultHTMLWhiteList = [HTMLBRElement, HTMLBodyElement, HTMLDListElement, HTMLDataElement, HTMLDataListElement, HTMLDivElement, HTMLFieldSetElement, HTMLFormElement, HTMLHRElement, HTMLHeadingElement, HTMLLIElement, HTMLLegendElement, HTMLMapElement, HTMLMetaElement, HTMLMeterElement, HTMLModElement, HTMLOListElement, HTMLOutputElement, HTMLParagraphElement, HTMLPreElement, HTMLProgressElement, HTMLQuoteElement, HTMLSpanElement, HTMLTableCaptionElement, HTMLTableCellElement, HTMLTableColElement, HTMLTableElement, HTMLTableSectionElement, HTMLTableRowElement, HTMLTimeElement, HTMLTitleElement, HTMLUListElement, HTMLUnknownElement, HTMLTemplateElement, HTMLCanvasElement, HTMLElement];
 var globalAllowedAtttributes = new Set(['id', 'class', 'style', 'alt', 'role', 'aria-label', 'aria-labelledby', 'aria-hidden', 'tabindex', 'title', 'dir', 'lang', 'height', 'width', 'slot']);
 function sanitizeType(obj, t, allowedAttributes, element) {
@@ -3525,7 +3525,7 @@ class HTMLSanitizer {
   isAttributeForced(elem, att) {
     var _reservedAtrributes$g;
 
-    return ((_reservedAtrributes$g = reservedAtrributes.get(elem)) === null || _reservedAtrributes$g === void 0 ? void 0 : _reservedAtrributes$g.has(att)) || regRservedSystemAtt.test(att) && elem.hasAttribute(att);
+    return ((_reservedAtrributes$g = reservedAtrributes.get(elem)) === null || _reservedAtrributes$g === void 0 ? void 0 : _reservedAtrributes$g.has(att)) || regReservedSystemAtt.test(att) && elem.hasAttribute(att);
   }
 
   setAttributeForced(elem, att, value) {
@@ -3689,7 +3689,6 @@ function isObject(object) {
 function isIterable(x) {
   return x && typeof x === 'object' && Symbol.iterator in x;
 }
-var varSubsStore = new WeakMap();
 function createVarSubs(skope, context) {
   var varSubs = {};
 
@@ -3723,9 +3722,13 @@ function createErrorCb(el) {
 function createError(msg, el) {
   var err = new Error(msg);
   err.element = el;
-  console.error(err, el);
+  errorCb(err, el);
   return err;
 }
+
+var errorCb = (err, el) => {
+  console.error(err, el);
+};
 
 function getRootScope(skope, scopes) {
   for (var i = scopes.length - 1; i >= 0; i--) {
@@ -3794,14 +3797,14 @@ function pushScope(skope, scopes, elem, sub, vars) {
 function watchRun(skope, el, scopes, code) {
   try {
     var exec = skope.exec(getRootElement(skope, scopes), "return ".concat(code), scopes);
-    varSubsStore.set(exec.run, createVarSubs(skope, exec.context));
+    skope.varSubsStore.set(exec.run, createVarSubs(skope, exec.context));
     return exec.run;
   } catch (err) {
     createError(err.message, el);
 
     var r = () => {};
 
-    varSubsStore.set(r, {
+    skope.varSubsStore.set(r, {
       subscribeGet() {
         return {
           unsubscribe() {}
@@ -3823,7 +3826,7 @@ function watchRun(skope, el, scopes, code) {
 function watch(skope, elem, toWatch, handler, errorCb) {
   var watchGets = new Map();
   var subUnsubs = [];
-  var varSubs = varSubsStore.get(toWatch);
+  var varSubs = skope.varSubsStore.get(toWatch);
 
   if (!varSubs) {
     var context = skope.sandbox.getContext(toWatch);
@@ -4319,6 +4322,84 @@ function attributeDirective(skope, element, att, currentSubs, ready, delegate) {
   });
 }
 
+function styleElement(skope, element) {
+  var loaded = () => {
+    var parent = element.parentElement;
+    if (!parent) return;
+    var id = parent.getAttribute('skope-style') || ++skope.styleIds;
+    skope.sanitizer.setAttributeForced(parent, 'skope-style', "".concat(id));
+    var i = element.sheet.cssRules.length - 1;
+
+    for (var rule of [...element.sheet.cssRules].reverse()) {
+      if (!(rule instanceof CSSStyleRule || rule instanceof CSSKeyframesRule)) {
+        element.sheet.deleteRule(i);
+      }
+
+      i--;
+    }
+
+    i = 0;
+
+    for (var _rule of [...element.sheet.cssRules]) {
+      if (_rule instanceof CSSStyleRule) {
+        var {
+          cssText
+        } = _rule.style;
+        element.sheet.deleteRule(i);
+        element.sheet.insertRule("[skope-style=\"".concat(id, "\"] :is(").concat(_rule.selectorText, ") { ").concat(cssText, " }"), i);
+      }
+
+      i++;
+    }
+  };
+
+  if (element.sheet && element.parentElement) {
+    loaded();
+  } else {
+    element.addEventListener('load', loaded);
+  }
+}
+
+function scriptElement(skope, element, ready) {
+  if (element.type === 'skopejs') {
+    ready(scopes => {
+      try {
+        skope.exec(getRootElement(skope, scopes), element.innerHTML, scopes).run();
+      } catch (err) {
+        createError(err === null || err === void 0 ? void 0 : err.message, element);
+      }
+    });
+  } else {
+    element.remove();
+  }
+}
+
+function iframetElement(skope, element, ready) {
+  ready(() => {
+    var exec = () => {
+      skope.wrapElem(element).html(element.getAttribute('skope-iframe-content'));
+      element.removeAttribute('skope-iframe-content');
+    };
+
+    if (element.contentDocument.readyState !== 'complete') {
+      element.addEventListener('load', exec);
+    } else {
+      exec();
+    }
+  });
+}
+
+function runDirective(skope, exec, scopes) {
+  var dir = skope.directives[exec.directive];
+
+  if (dir) {
+    return dir(exec, scopes);
+  }
+
+  createError('Unknown directive', exec.att);
+  return [];
+}
+
 function walkerInstance() {
   var execSteps = [];
   return {
@@ -4329,17 +4410,6 @@ function walkerInstance() {
     }
   };
 }
-
-function runDirective(skope, exec, scopes) {
-  var dir = skope.directives[exec.directive];
-
-  if (dir) {
-    return dir(exec, scopes);
-  }
-
-  return [];
-}
-
 var closings = {
   '(': ')',
   '{': '}',
@@ -4476,47 +4546,12 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
     }
 
     if (element instanceof HTMLStyleElement) {
-      var loaded = () => {
-        var parent = element.parentElement;
-        if (!parent) return;
+      styleElement(skope, element);
+      return;
+    }
 
-        if (!skope.sanitizer.isAttributeForced(parent, 'skope-style')) {
-          parent.removeAttribute('skope-style');
-        }
-
-        var id = parent.getAttribute('skope-style') || ++skope.styleIds;
-        skope.sanitizer.setAttributeForced(parent, 'skope-style', "".concat(id));
-        var i = element.sheet.cssRules.length - 1;
-
-        for (var rule of [...element.sheet.cssRules].reverse()) {
-          if (!(rule instanceof CSSStyleRule || rule instanceof CSSKeyframesRule)) {
-            element.sheet.deleteRule(i);
-          }
-
-          i--;
-        }
-
-        i = 0;
-
-        for (var _rule of [...element.sheet.cssRules]) {
-          if (_rule instanceof CSSStyleRule) {
-            var {
-              cssText
-            } = _rule.style;
-            element.sheet.deleteRule(i);
-            element.sheet.insertRule("[skope-style=\"".concat(id, "\"] :is(").concat(_rule.selectorText, ") { ").concat(cssText, " }"), i);
-          }
-
-          i++;
-        }
-      };
-
-      if (element.sheet && element.parentElement) {
-        loaded();
-      } else {
-        element.addEventListener('load', loaded);
-      }
-
+    if (element instanceof HTMLScriptElement) {
+      scriptElement(skope, element, ready);
       return;
     }
 
@@ -4567,34 +4602,7 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
     }
 
     if (element instanceof HTMLIFrameElement && element.hasAttribute('skope-iframe-content')) {
-      ready(() => {
-        var exec = () => {
-          skope.wrapElem(element).html(element.getAttribute('skope-iframe-content'));
-          element.removeAttribute('skope-iframe-content');
-        };
-
-        if (element.contentDocument.readyState !== 'complete') {
-          element.addEventListener('load', exec);
-        } else {
-          exec();
-        }
-      });
-    }
-
-    if (element instanceof HTMLScriptElement) {
-      if (element.type === 'skopejs') {
-        ready(scopes => {
-          try {
-            skope.exec(getRootElement(skope, scopes), element.innerHTML, scopes).run();
-          } catch (err) {
-            createError(err === null || err === void 0 ? void 0 : err.message, element);
-          }
-        });
-      } else {
-        element.remove();
-      }
-
-      return;
+      iframetElement(skope, element, ready);
     }
 
     var _loop3 = function _loop3(_att) {
@@ -6060,6 +6068,7 @@ class Skope {
     this.sandboxCache = new WeakMap();
     this.styleIds = 0;
     this.calls = [];
+    this.varSubsStore = new WeakMap();
     this.sanitizer = (options === null || options === void 0 ? void 0 : options.sanitizer) || new HTMLSanitizer();
     delete this.globals.Function;
     delete this.globals.eval;

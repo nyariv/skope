@@ -1,4 +1,4 @@
-import HTMLSanitizer from './HTMLSanitizer';
+import { IHTMLSanitizer } from './HTMLSanitizer';
 declare type SortCallback = (a: Element, b: Element) => any;
 declare type Search = (value?: Element, index?: number) => any;
 interface EqEventListener<T> {
@@ -87,7 +87,7 @@ export interface IElementCollection {
 export declare type Selector = Element | IElementCollection | Iterable<Element> | string;
 export declare type WrapType = Selector | Selector[];
 export declare function ownerDoc(coll: IElementCollection): HTMLDocument | undefined;
-export default function createClass(sanitizer: () => HTMLSanitizer): {
+export default function createClass(sanitizer: () => IHTMLSanitizer): {
     getStore: <T>(elem: Node, store: string, defaultValue?: T) => T;
     deleteStore: (elem: Element, store: string) => boolean;
     ElementCollection: new (item?: number | Element, ...items: Element[]) => IElementCollection;

@@ -1,7 +1,7 @@
 import Sandbox, { IExecContext } from '@nyariv/sandboxjs';
 import { WrapType, DelegateObject, IElementCollection as IElemCollection } from './eQuery';
-import HTMLSanitizer from './HTMLSanitizer';
-import { Subs } from './utils';
+import { IHTMLSanitizer } from './HTMLSanitizer';
+import { IVarSubs, Subs } from './utils';
 export interface Component {
 }
 export interface IElementCollection extends IElemCollection {
@@ -27,7 +27,7 @@ export interface IRootScope extends IElementScope {
     };
     $wrap(element: WrapType): IElementCollection;
 }
-export interface DirectiveExec {
+export interface IDirectiveExec {
     element: Element;
     att: Node;
     directive: string;
@@ -38,13 +38,64 @@ export interface DirectiveExec {
 }
 export interface IDirectiveDefinition {
     name: string;
-    callback: (exec: DirectiveExec, scopes: IElementScope[]) => Subs;
+    callback: (exec: IDirectiveExec, scopes: IElementScope[]) => Subs;
 }
-export default class Skope {
+export interface ISkope {
     components: any;
-    sanitizer: HTMLSanitizer;
+    sanitizer: IHTMLSanitizer;
     directives: {
-        [name: string]: (exec: DirectiveExec, scopes: IElementScope[]) => Subs;
+        [name: string]: (exec: IDirectiveExec, scopes: IElementScope[]) => Subs;
+    };
+    globals: import('@nyariv/sandboxjs/dist/node/executor').IGlobals;
+    prototypeWhitelist: Map<any, Set<string>>;
+    sandbox: Sandbox;
+    sandboxCache: WeakMap<Node, {
+        [code: string]: (...scopes: (any)[]) => {
+            context: IExecContext;
+            run: () => unknown;
+        } | {
+            context: IExecContext;
+            run: () => Promise<unknown>;
+        };
+    }>;
+    ElementCollection: new (item?: number | Element, ...items: Element[]) => IElementCollection;
+    wrap: (selector: WrapType, context: IElementCollection | Document) => IElementCollection;
+    defaultDelegateObject: DelegateObject;
+    getStore: <T>(elem: Node, store: string, defaultValue?: T) => T;
+    deleteStore: (elem: Element, store: string) => boolean;
+    RootScope: new (el: Element) => IRootScope;
+    ElementScope: new (el: Element) => IElementScope;
+    styleIds: number;
+    calls: (() => void)[];
+    callTimer: any;
+    varSubsStore: WeakMap<() => unknown | Promise<unknown>, IVarSubs>;
+    call(cb: () => void): void;
+    defineComponent(name: string, comp: Component): void;
+    wrapElem(el: Element): IElementCollection;
+    watch<T>(elem: Node, toWatch: () => T, handler: (val: T, lastVal: T | undefined) => void | Promise<void>, errorCb?: (err: Error) => void): Subs;
+    exec(el: Node, code: string, scopes: IElementScope[]): {
+        context: IExecContext;
+        run: () => unknown;
+    };
+    execAsync(el: Node, code: string, scopes: IElementScope[]): {
+        context: IExecContext;
+        run: () => Promise<unknown>;
+    };
+    defineDirective(exec: IDirectiveDefinition): void;
+    init(elem?: Element, component?: string, alreadyPreprocessed?: boolean): {
+        cancel: () => void;
+    };
+    preprocessHTML(skope: ISkope, parent: Element, html: DocumentFragment | Element | string): DocumentFragment | Element;
+    processHTML(skope: ISkope, elem: Node, subs: Subs, delegate: DelegateObject, skipFirst?: boolean): {
+        elem: Node;
+        run: (scopes: IElementScope[]) => void;
+    };
+}
+export default class Skope implements ISkope {
+    components: any;
+    sanitizer: IHTMLSanitizer;
+    directives: {
+        [name: string]: (exec: IDirectiveExec, scopes: IElementScope[]) => Subs;
     };
     globals: import("@nyariv/sandboxjs/dist/node/executor").IGlobals;
     prototypeWhitelist: Map<any, Set<string>>;
@@ -68,8 +119,9 @@ export default class Skope {
     styleIds: number;
     calls: (() => void)[];
     callTimer: any;
+    varSubsStore: WeakMap<() => unknown | Promise<unknown>, IVarSubs>;
     constructor(options?: {
-        sanitizer?: HTMLSanitizer;
+        sanitizer?: IHTMLSanitizer;
         executionQuote?: bigint;
         allowRegExp?: boolean;
     });
@@ -89,8 +141,8 @@ export default class Skope {
     init(elem?: Element, component?: string, alreadyPreprocessed?: boolean): {
         cancel: () => void;
     };
-    preprocessHTML(skope: Skope, parent: Element, html: DocumentFragment | Element | string): DocumentFragment | Element;
-    processHTML(skope: Skope, elem: Node, subs: Subs, delegate: DelegateObject, skipFirst?: boolean): {
+    preprocessHTML(skope: ISkope, parent: Element, html: DocumentFragment | Element | string): DocumentFragment | Element;
+    processHTML(skope: ISkope, elem: Node, subs: Subs, delegate: DelegateObject, skipFirst?: boolean): {
         elem: Node;
         run: (scopes: IElementScope[]) => void;
     };
