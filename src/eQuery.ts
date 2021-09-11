@@ -268,7 +268,7 @@ export default function createClass(sanitizer: () => IHTMLSanitizer): {
         });
       }
       const sel = selector instanceof ElementCollection ? selector : wrap(selector, this);
-      return filter(this, (elem, i) => sel.some((test) => elem !== test && elem.contains(test)));
+      return filter(this, (elem, i) => sel.some((test) => elem !== test && contains(elem, test)));
     }
 
     /**
@@ -974,7 +974,7 @@ export default function createClass(sanitizer: () => IHTMLSanitizer): {
 
     // Filter within context
     if (doFilter) {
-      res = filter(res, (elem, i) => $context.some((cont) => cont !== elem && cont.contains(elem)));
+      res = filter(res, (elem, i) => $context.some((cont) => cont !== elem && contains(cont, elem)));
     }
 
     // Sort by apppearance
@@ -982,6 +982,17 @@ export default function createClass(sanitizer: () => IHTMLSanitizer): {
       res = res.sort();
     }
     return res;
+  }
+
+  /**
+   * Checks if parent contains element, recusively through iframes.
+   * @param parent
+   * @param elem
+   * @returns
+   */
+  function contains(parent: Element, elem: Element): boolean {
+    if (!elem) return false;
+    return parent.contains(elem) || contains(parent, elem.ownerDocument?.defaultView?.frameElement);
   }
 
   /**

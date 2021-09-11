@@ -4,11 +4,10 @@ import type {
 } from '../../Skope';
 import { createError, Subs } from '../../utils';
 
-const ddd = document.createElement('div');
-ddd.innerHTML = '<span $$templates="$templates"><span>';
-const $$templatesAttr = ddd.querySelector('span').attributes.item(0);
-
 export default function componentDirective(skope: ISkope): IDirectiveDefinition {
+  const ddd = document.createElement('div');
+  ddd.innerHTML = '<span $$templates="$templates"><span>';
+  const $$templatesAttr = ddd.querySelector('span').attributes.item(0);
   return {
     name: 'component',
     callback: (exec: IDirectiveExec, scopes: IElementScope[]) => {
@@ -72,6 +71,7 @@ export default function componentDirective(skope: ISkope): IDirectiveDefinition 
       elem.removeAttribute('s-detached');
       elem.setAttribute('s-component', exec.att.nodeValue);
       elem.setAttribute('component-processed', '');
+      elem.removeAttribute('$$templates');
 
       if (slot) {
         skope.getStore<IElementScope[]>(slot, 'scopes', scopes);

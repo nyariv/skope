@@ -199,7 +199,7 @@ export function walkTree(skope: ISkope, element: Node, parentSubs: Subs, ready: 
         attributeDirective(skope, element, att, currentSubs, ready, delegate);
       } else if (att.nodeName.startsWith('@')) {
         eventDirective(skope, element, att, currentSubs, ready, delegate);
-      } else if (att.nodeName.startsWith('s-')) {
+      } else if (att.nodeName.startsWith('s-') && att.nodeName !== 's-detached' && att.nodeName !== 's-static') {
         try {
           ready((scopes) => {
             currentSubs.push(runDirective(skope, {
