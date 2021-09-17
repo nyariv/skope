@@ -5,7 +5,7 @@ import {
   createError, isIterable, isObject, regKeyValName, regVarName, Subs, unsubNested,
 } from '../../utils';
 
-export default function forDirective(skope: ISkope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void) {
+export default function forDirective(skope: ISkope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void | IElementScope[]) => void) {
   const comment = document.createComment('s-for');
   element.after(comment);
   element.remove();

@@ -2,7 +2,7 @@ import { getRootElement } from '../runtime/scope';
 import type { IElementScope, ISkope } from '../../Skope';
 import { createError } from '../../utils';
 
-export default function scriptElement(skope: ISkope, element: HTMLScriptElement, ready: (cb: (scopes: IElementScope[]) => void) => void) {
+export default function scriptElement(skope: ISkope, element: HTMLScriptElement, ready: (cb: (scopes: IElementScope[]) => void | IElementScope[]) => void) {
   if (element.type === 'skopejs') {
     ready((scopes) => {
       try {

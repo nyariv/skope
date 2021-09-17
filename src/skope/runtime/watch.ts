@@ -34,8 +34,9 @@ export function watch<T>(skope: ISkope, elem: Node, toWatch: () => T, handler: (
   let start = Date.now();
   let count = 0;
   let lastPromise: any;
-  const ignore = new WeakMap<any, Set<string>>();
   const digest = () => {
+    const ignore = new WeakMap<any, Record<string, number>>();
+    unsubNested(subUnsubs);
     if ((Date.now() - start) > 4000) {
       count = 0;
       start = Date.now();
@@ -43,8 +44,7 @@ export function watch<T>(skope: ISkope, elem: Node, toWatch: () => T, handler: (
       createError('Too many digests', elem);
       return;
     }
-    unsubNested(subUnsubs);
-    const g = varSubs?.subscribeGet((obj: any, name: string) => {
+    const g = varSubs.subscribeGet((obj: any, name: string) => {
       if (obj === undefined) return;
       const list = watchGets.get(obj) || new Set();
       list.add(name);
@@ -62,13 +62,13 @@ export function watch<T>(skope: ISkope, elem: Node, toWatch: () => T, handler: (
     for (const item of watchGets) {
       const obj = item[0];
       for (const name of item[1]) {
-        subUnsubs.push(varSubs?.subscribeSet(obj, name, () => {
+        subUnsubs.push(varSubs.subscribeSet(obj, name, () => {
           let names = ignore.get(obj);
           if (!names) {
-            names = new Set();
+            names = { [name]: 0 };
             ignore.set(obj, names);
           }
-          names.add(name);
+          names[name]++;
         }).unsubscribe);
       }
     }
@@ -77,8 +77,9 @@ export function watch<T>(skope: ISkope, elem: Node, toWatch: () => T, handler: (
       const obj = item[0];
       for (const name of item[1]) {
         subUnsubs.push(skope.sandbox.subscribeSetGlobal(obj, name, (mod) => {
-          if (ignore.get(obj)?.has(name)) {
-            ignore.get(obj).delete(name);
+          const names = ignore.get(obj);
+          if (names?.[name]) {
+            names[name]--;
             return;
           }
           if (update) return;

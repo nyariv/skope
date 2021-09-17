@@ -3,7 +3,7 @@ import { watchRun } from '../runtime/watch';
 import type { ISkope, IElementScope } from '../../Skope';
 import { Subs } from '../../utils';
 
-export default function attributeDirective(skope: ISkope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject) {
+export default function attributeDirective(skope: ISkope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void | IElementScope[]) => void, delegate: DelegateObject) {
   const at = att.nodeName.slice(1);
   const parts = at.split('.');
   ready((scopes) => {

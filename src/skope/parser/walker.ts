@@ -23,11 +23,11 @@ function runDirective(skope: ISkope, exec: IDirectiveExec, scopes: IElementScope
 }
 
 export function walkerInstance() {
-  const execSteps: ((scopes: IElementScope[]) => void)[] = [];
+  const execSteps: ((scopes: IElementScope[]) => void | IElementScope[])[] = [];
   return {
-    ready: (cb: (scopes: IElementScope[]) => void) => execSteps.push(cb),
+    ready: (cb: (scopes: IElementScope[]) => void | IElementScope[]) => execSteps.push(cb),
     run: function runNested(scopes: IElementScope[]) {
-      execSteps.forEach((cb) => cb(scopes));
+      execSteps.reduce((scs, cb) => cb(scs) || scs, scopes);
       execSteps.length = 0;
     },
   };
@@ -94,15 +94,16 @@ export function walkText(s: string, endJs: string = null) {
   return strings.filter(Boolean);
 }
 
-export function walkTree(skope: ISkope, element: Node, parentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject, skipFirst: boolean) {
+export function walkTree(skope: ISkope, element: Node, parentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void | IElementScope[]) => void, delegate: DelegateObject, skipFirst: boolean) {
   const currentSubs: Subs = [];
   parentSubs.push(currentSubs);
   const walkNested = () => {
-    const execSteps: ((scopes: IElementScope[]) => void)[] = [];
-    const r = (cb: (scopes: IElementScope[]) => void) => execSteps.push(cb);
+    const runs: ((scopes: IElementScope[]) => void)[] = [];
     for (const el of [...element.childNodes]) {
       if (el instanceof Element) {
-        walkTree(skope, el, currentSubs, r, delegate, false);
+        const walker = walkerInstance();
+        runs.push(walker.run);
+        walkTree(skope, el, currentSubs, walker.ready, delegate, false);
       } else if (el.nodeType === 3) {
         const strings = walkText(el.textContent);
         const nodes: Text[] = [];
@@ -118,7 +119,6 @@ export function walkTree(skope: ISkope, element: Node, parentSubs: Subs, ready: 
               }, (err: Error) => {
                 placeholder.textContent = '';
               }));
-              return scopes;
             });
             nodes.push(placeholder);
           } else {
@@ -127,15 +127,18 @@ export function walkTree(skope: ISkope, element: Node, parentSubs: Subs, ready: 
         }
 
         if (found) {
-          nodes.forEach((n) => {
+          for (const n of nodes) {
             el.before(n);
-          });
+          }
           el.remove();
         }
       }
     }
     ready((scopes) => {
-      for (const cb of execSteps) cb(scopes);
+      for (const run of runs) {
+        run(scopes);
+      }
+      runs.length = 0;
     });
   };
   if (skipFirst) {
@@ -185,11 +188,11 @@ export function walkTree(skope: ISkope, element: Node, parentSubs: Subs, ready: 
     const flags = { elementScopeAdded: false };
     for (const att of element.attributes) {
       if (att.nodeName.startsWith('$')) {
-        ready = variableDirective(skope, element, att, currentSubs, ready, delegate, flags);
+        variableDirective(skope, element, att, currentSubs, ready, delegate, flags);
       }
     }
     if (element.hasAttribute('s-detached')) {
-      ready = detachedDirective(skope, element, element.getAttributeNode('s-detached'), currentSubs, ready, delegate, flags);
+      detachedDirective(skope, element, element.getAttributeNode('s-detached'), currentSubs, ready, delegate, flags);
     }
     if (element instanceof HTMLIFrameElement && element.hasAttribute('skope-iframe-content')) {
       iframetElement(skope, element, ready);

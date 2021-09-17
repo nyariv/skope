@@ -4,7 +4,7 @@ import { watchRun } from '../runtime/watch';
 import type { ISkope, IElementScope } from '../../Skope';
 import { createError, Subs, unsubNested } from '../../utils';
 
-export default function ifDirective(skope: ISkope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void) => void, delegate: DelegateObject) {
+export default function ifDirective(skope: ISkope, element: Element, att: Attr, currentSubs: Subs, ready: (cb: (scopes: IElementScope[]) => void | IElementScope[]) => void, delegate: DelegateObject) {
   const comment = document.createComment('s-if');
   let ifElem: Element;
   const at = element.getAttribute('s-if');
