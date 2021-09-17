@@ -3645,8 +3645,9 @@ function watch(skope, elem, toWatch, handler, errorCb) {
     let start = Date.now();
     let count = 0;
     let lastPromise;
-    const ignore = new WeakMap();
     const digest = () => {
+        const ignore = new WeakMap();
+        unsubNested(subUnsubs);
         if ((Date.now() - start) > 4000) {
             count = 0;
             start = Date.now();
@@ -3655,8 +3656,7 @@ function watch(skope, elem, toWatch, handler, errorCb) {
             createError('Too many digests', elem);
             return;
         }
-        unsubNested(subUnsubs);
-        const g = varSubs?.subscribeGet((obj, name) => {
+        const g = varSubs.subscribeGet((obj, name) => {
             if (obj === undefined)
                 return;
             const list = watchGets.get(obj) || new Set();
@@ -3676,13 +3676,13 @@ function watch(skope, elem, toWatch, handler, errorCb) {
         for (const item of watchGets) {
             const obj = item[0];
             for (const name of item[1]) {
-                subUnsubs.push(varSubs?.subscribeSet(obj, name, () => {
+                subUnsubs.push(varSubs.subscribeSet(obj, name, () => {
                     let names = ignore.get(obj);
                     if (!names) {
-                        names = new Set();
+                        names = { [name]: 0 };
                         ignore.set(obj, names);
                     }
-                    names.add(name);
+                    names[name]++;
                 }).unsubscribe);
             }
         }
@@ -3690,8 +3690,9 @@ function watch(skope, elem, toWatch, handler, errorCb) {
             const obj = item[0];
             for (const name of item[1]) {
                 subUnsubs.push(skope.sandbox.subscribeSetGlobal(obj, name, (mod) => {
-                    if (ignore.get(obj)?.has(name)) {
-                        ignore.get(obj).delete(name);
+                    const names = ignore.get(obj);
+                    if (names?.[name]) {
+                        names[name]--;
                         return;
                     }
                     if (update)
@@ -3941,14 +3942,7 @@ function variableDirective(skope, element, att, currentSubs, ready, delegate, fl
     }
     if (!flags.elementScopeAdded) {
         flags.elementScopeAdded = true;
-        const execSteps = [];
-        ready((s) => {
-            const scopes = pushScope(skope, s, element, currentSubs);
-            for (const cb of execSteps) {
-                cb(scopes);
-            }
-        });
-        ready = (cb) => execSteps.push(cb);
+        ready((s) => pushScope(skope, s, element, currentSubs));
     }
     ready((scopes) => {
         skope.execAsync(getRootElement(skope, scopes), `let ${name} = ${att.nodeValue}`, scopes).run().catch(createErrorCb(att));
@@ -3957,21 +3951,15 @@ function variableDirective(skope, element, att, currentSubs, ready, delegate, fl
 }
 
 function detachedDirective(skope, element, att, currentSubs, ready, delegate, flags) {
-    let nestedScopes;
-    const execSteps = [];
     ready((scopes) => {
-        nestedScopes = [getScope(skope, element, currentSubs, {}, true)];
+        const nestedScopes = [getScope(skope, element, currentSubs, {}, true)];
         if (flags.elementScopeAdded) {
             nestedScopes[0].$templates = { ...scopes[scopes.length - 1].$templates || {} };
             delete scopes[scopes.length - 1].$templates;
             nestedScopes.push(scopes[scopes.length - 1]);
         }
-        for (const cb of execSteps) {
-            cb(nestedScopes);
-        }
+        return nestedScopes;
     });
-    ready = (cb) => execSteps.push(cb);
-    return ready;
 }
 
 function attributeDirective(skope, element, att, currentSubs, ready, delegate) {
@@ -4085,7 +4073,7 @@ function walkerInstance() {
     return {
         ready: (cb) => execSteps.push(cb),
         run: function runNested(scopes) {
-            execSteps.forEach((cb) => cb(scopes));
+            execSteps.reduce((scs, cb) => cb(scs) || scs, scopes);
             execSteps.length = 0;
         },
     };
@@ -4160,11 +4148,12 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
     const currentSubs = [];
     parentSubs.push(currentSubs);
     const walkNested = () => {
-        const execSteps = [];
-        const r = (cb) => execSteps.push(cb);
+        const runs = [];
         for (const el of [...element.childNodes]) {
             if (el instanceof Element) {
-                walkTree(skope, el, currentSubs, r, delegate, false);
+                const walker = walkerInstance();
+                runs.push(walker.run);
+                walkTree(skope, el, currentSubs, walker.ready, delegate, false);
             }
             else if (el.nodeType === 3) {
                 const strings = walkText(el.textContent);
@@ -4181,7 +4170,6 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
                             }, (err) => {
                                 placeholder.textContent = '';
                             }));
-                            return scopes;
                         });
                         nodes.push(placeholder);
                     }
@@ -4190,16 +4178,18 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
                     }
                 }
                 if (found) {
-                    nodes.forEach((n) => {
+                    for (const n of nodes) {
                         el.before(n);
-                    });
+                    }
                     el.remove();
                 }
             }
         }
         ready((scopes) => {
-            for (const cb of execSteps)
-                cb(scopes);
+            for (const run of runs) {
+                run(scopes);
+            }
+            runs.length = 0;
         });
     };
     if (skipFirst) {
@@ -4250,11 +4240,11 @@ function walkTree(skope, element, parentSubs, ready, delegate, skipFirst) {
         const flags = { elementScopeAdded: false };
         for (const att of element.attributes) {
             if (att.nodeName.startsWith('$')) {
-                ready = variableDirective(skope, element, att, currentSubs, ready, delegate, flags);
+                variableDirective(skope, element, att, currentSubs, ready, delegate, flags);
             }
         }
         if (element.hasAttribute('s-detached')) {
-            ready = detachedDirective(skope, element, element.getAttributeNode('s-detached'), currentSubs, ready, delegate, flags);
+            detachedDirective(skope, element, element.getAttributeNode('s-detached'), currentSubs, ready, delegate, flags);
         }
         if (element instanceof HTMLIFrameElement && element.hasAttribute('skope-iframe-content')) {
             iframetElement(skope, element, ready);
